@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>From Hours to Minutes: How SIFT-AID is Solving the 8-Minute Incident Response Crisis</title>
+  <meta name="description" content="SIFT-AID uses autonomous LangGraph agents, MCP guardrails, and zero-hallucination validation to compress malware triage from 90 minutes to under 200 seconds." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0f1e;
+      --surface:  #0f172a;
+      --card:     #141f35;
+      --border:   #1e2d4a;
+      --teal:     #06b6d4;
+      --teal-dim: #0891b2;
+      --green:    #10b981;
+      --red:      #ef4444;
+      --yellow:   #f59e0b;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --accent:   #818cf8;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    /* NAV */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(10,15,30,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex; align-items: center; gap: 1rem;
+      height: 60px;
+    }
+    .nav-logo {
+      font-weight: 800; font-size: 1.1rem;
+      background: linear-gradient(135deg, var(--teal), var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+    .nav-tag {
+      margin-left: auto;
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em;
+      padding: 4px 10px; border-radius: 20px;
+      background: rgba(6,182,212,0.12); color: var(--teal);
+      border: 1px solid rgba(6,182,212,0.25);
+      text-transform: uppercase;
+    }
+
+    /* HERO */
+    .hero {
+      position: relative; overflow: hidden;
+      min-height: 70vh;
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 6rem 2rem 4rem;
+      text-align: center;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(6,182,212,0.12) 0%, transparent 70%),
+                  radial-gradient(ellipse 50% 40% at 80% 80%, rgba(129,140,248,0.08) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .hero-img {
+      width: 100%; max-width: 860px; margin: 0 auto 2.5rem;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      box-shadow: 0 0 60px rgba(6,182,212,0.15);
+      display: block;
+    }
+    .hero-meta {
+      display: flex; align-items: center; justify-content: center;
+      gap: 1rem; flex-wrap: wrap;
+      font-size: 0.8rem; color: var(--muted);
+      margin-bottom: 1.2rem;
+    }
+    .tag {
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em;
+      padding: 3px 9px; border-radius: 4px; text-transform: uppercase;
+    }
+    .tag-dfir   { background: rgba(6,182,212,0.15); color: var(--teal); }
+    .tag-ai     { background: rgba(129,140,248,0.15); color: var(--accent); }
+    .tag-soc    { background: rgba(16,185,129,0.15); color: var(--green); }
+
+    h1 {
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      font-weight: 800; line-height: 1.2; letter-spacing: -1px;
+      max-width: 800px; margin: 0 auto 1.2rem;
+      background: linear-gradient(135deg, #e2e8f0 30%, var(--teal) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .hero-sub {
+      font-size: 1.1rem; color: var(--muted); max-width: 640px;
+      margin: 0 auto;
+    }
+
+    /* CONTENT */
+    .container {
+      max-width: 780px; margin: 0 auto;
+      padding: 2rem 1.5rem 5rem;
+    }
+
+    /* SECTION HEADINGS */
+    h2 {
+      font-size: 1.55rem; font-weight: 700; letter-spacing: -0.5px;
+      color: var(--text);
+      margin: 3rem 0 1rem;
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 4px; height: 1.4em;
+      background: linear-gradient(180deg, var(--teal), var(--accent));
+      border-radius: 2px; flex-shrink: 0;
+    }
+
+    p { margin-bottom: 1.2rem; color: #c8d5e8; }
+
+    /* CALLOUT */
+    .callout {
+      background: var(--card);
+      border-left: 3px solid var(--teal);
+      border-radius: 0 12px 12px 0;
+      padding: 1rem 1.5rem;
+      margin: 1.8rem 0;
+      font-style: italic; color: #94a3b8;
+      font-size: 0.97rem;
+    }
+
+    /* FIGURE */
+    figure {
+      margin: 2.5rem 0;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    }
+    figure img {
+      width: 100%; display: block;
+    }
+    figcaption {
+      background: var(--card);
+      padding: 0.7rem 1.2rem;
+      font-size: 0.8rem; color: var(--muted);
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+
+    /* FEATURE GRID */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem; margin: 1.5rem 0;
+    }
+    .feature-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.2rem;
+      transition: border-color 0.25s, transform 0.25s;
+    }
+    .feature-card:hover {
+      border-color: var(--teal);
+      transform: translateY(-3px);
+    }
+    .feature-icon { font-size: 1.6rem; margin-bottom: 0.6rem; }
+    .feature-card h3 {
+      font-size: 0.88rem; font-weight: 700;
+      color: var(--teal); margin-bottom: 0.4rem;
+      letter-spacing: 0.02em;
+    }
+    .feature-card p { font-size: 0.83rem; color: var(--muted); margin: 0; }
+
+    /* RESULTS TABLE */
+    .results-table {
+      width: 100%; border-collapse: collapse;
+      margin: 1.5rem 0; font-size: 0.9rem;
+    }
+    .results-table thead tr {
+      background: var(--card);
+      border-bottom: 2px solid var(--teal);
+    }
+    .results-table th {
+      text-align: left; padding: 0.75rem 1rem;
+      font-size: 0.75rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--teal); font-weight: 600;
+    }
+    .results-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.2s;
+    }
+    .results-table tbody tr:hover { background: var(--card); }
+    .results-table td { padding: 0.7rem 1rem; color: #c8d5e8; }
+    .results-table td:nth-child(2) {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--teal); font-weight: 500;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 10px; border-radius: 20px;
+      font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    .badge-malicious { background: rgba(239,68,68,0.15); color: var(--red); }
+    .badge-benign    { background: rgba(16,185,129,0.15); color: var(--green); }
+    .badge-review    { background: rgba(245,158,11,0.15); color: var(--yellow); }
+
+    /* STAT STRIP */
+    .stat-strip {
+      display: flex; flex-wrap: wrap; gap: 1rem;
+      margin: 2rem 0;
+    }
+    .stat-box {
+      flex: 1; min-width: 140px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.2rem;
+      text-align: center;
+    }
+    .stat-num {
+      font-size: 2rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--teal), var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      line-height: 1;
+    }
+    .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 0.4rem; }
+
+    /* CODE BLOCK */
+    .code-block {
+      background: #060d1b;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem 1.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      color: #7dd3fc;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      line-height: 1.6;
+    }
+    .code-block .kw  { color: #c084fc; }
+    .code-block .str { color: #86efac; }
+    .code-block .cm  { color: #475569; }
+
+    /* ORDERED LIST */
+    ol.styled {
+      margin: 1rem 0 1.2rem 1.5rem;
+    }
+    ol.styled li {
+      margin-bottom: 0.6rem;
+      color: #c8d5e8;
+    }
+
+    /* UL LIST */
+    ul.styled {
+      list-style: none;
+      margin: 1rem 0 1.2rem 0;
+    }
+    ul.styled li {
+      padding: 0.5rem 0 0.5rem 1.8rem;
+      position: relative; color: #c8d5e8;
+      border-bottom: 1px solid rgba(30,45,74,0.5);
+    }
+    ul.styled li::before {
+      content: '▸';
+      position: absolute; left: 0;
+      color: var(--teal); font-size: 0.85rem;
+    }
+
+    /* CONCLUSION CTA */
+    .cta-box {
+      background: linear-gradient(135deg, rgba(6,182,212,0.1), rgba(129,140,248,0.08));
+      border: 1px solid rgba(6,182,212,0.25);
+      border-radius: 16px;
+      padding: 2.5rem;
+      text-align: center;
+      margin: 3rem 0;
+    }
+    .cta-box h3 {
+      font-size: 1.3rem; font-weight: 700; color: var(--text);
+      margin-bottom: 0.8rem;
+    }
+    .cta-box p { color: var(--muted); max-width: 520px; margin: 0 auto 1.5rem; }
+    .cta-btn {
+      display: inline-block;
+      padding: 0.75rem 2rem;
+      background: linear-gradient(135deg, var(--teal), var(--accent));
+      color: #fff; font-weight: 700; font-size: 0.9rem;
+      border-radius: 8px; text-decoration: none;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .cta-btn:hover { opacity: 0.9; transform: translateY(-2px); }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    /* DIVIDER */
+    hr.section-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 3rem 0;
+    }
+
+    @media (max-width: 600px) {
+      h1 { font-size: 1.6rem; }
+      h2 { font-size: 1.25rem; }
+      .feature-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <span class="nav-logo">SIFT-AID</span>
+  <span class="nav-tag">Research Blog</span>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <img
+    class="hero-img"
+    src="main_fig.png"
+    alt="SIFT-AID Autonomous Forensic Triage Architecture diagram"
+  />
+  <div class="hero-meta">
+    <span class="tag tag-dfir">DFIR</span>
+    <span class="tag tag-ai">AI Agents</span>
+    <span class="tag tag-soc">SOC Automation</span>
+    <span>June 2026 &nbsp;·&nbsp; 8 min read</span>
+  </div>
+  <h1>From Hours to Minutes: How SIFT-AID is Solving the 8-Minute Incident Response Crisis</h1>
+  <p class="hero-sub">
+    Autonomous LangGraph agents, kernel-enforced guardrails, and zero-hallucination
+    forensic validation — compressing 90-minute triage cycles into under 200 seconds.
+  </p>
+</header>
+
+<!-- MAIN CONTENT -->
+<main class="container">
+
+  <!-- KEY STATS -->
+  <div class="stat-strip">
+    <div class="stat-box">
+      <div class="stat-num">&lt;8</div>
+      <div class="stat-label">Minutes to full domain compromise by modern adversaries</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">~90</div>
+      <div class="stat-label">Minutes of human analyst time per sample (traditional DFIR)</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">&lt;200s</div>
+      <div class="stat-label">SIFT-AID full triage time across all test datasets</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">100%</div>
+      <div class="stat-label">Precision on clean-software false-positive validation</div>
+    </div>
+  </div>
+
+  <p>
+    In the current threat landscape, the clock is the defender's most relentless enemy. Modern
+    adversaries, leveraging automated exploitation frameworks, can now achieve full domain
+    compromise in <strong>under eight minutes</strong>. In stark contrast, the traditional
+    human-led Digital Forensics and Incident Response (DFIR) cycle — a grueling marathon of
+    hash verification, YARA scanning, memory analysis, and IOC extraction — typically demands
+    <strong>60 to 90 minutes</strong> of skilled analyst time per sample.
+  </p>
+
+  <div class="callout">
+    "This 'speed asymmetry' does more than give attackers a head start — it creates a massive
+    cognitive load that leads to analyst fatigue and missed signals."
+  </div>
+
+  <p>
+    SIFT-AID (Autonomous Malware Triage and Containment) represents a paradigm shift in
+    closing this gap. Deployed on the SANS SIFT Workstation, this system utilizes autonomous
+    agents to move forensic triage from the realm of hours into the realm of seconds,
+    reclaiming the initiative for the SOC by replacing manual drudgery with high-speed,
+    verifiable autonomy.
+  </p>
+
+  <figure>
+    <img src="main_fig.png" alt="SIFT-AID system architecture showing the LangGraph orchestrator, MCP server boundary, specialist analysis layers, and output pipeline" />
+    <figcaption>
+      <strong>Figure 1:</strong> SIFT-AID Autonomous Forensic Triage Architecture.
+      Evidence enters via read-only Docker mounts and flows through a stateful LangGraph
+      orchestrator before producing STIX 2.1 bundles and containment recommendations.
+    </figcaption>
+  </figure>
+
+  <hr class="section-divider" />
+
+  <!-- ARCHITECTURE -->
+  <h2>Architecture is the Only Real Security Boundary</h2>
+
+  <p>
+    While many AI implementations rely on "prompt engineering" to keep models in check,
+    SIFT-AID is built on the reality that <strong>instruction-following is not a security
+    guarantee</strong>. Adversarially crafted malware can elicit harmful tool invocations
+    if the agent relies solely on linguistic constraints. To solve this, SIFT-AID utilizes
+    <em>Architectural Guardrails</em> enforced at the system level.
+  </p>
+  <p>
+    The system employs a <strong>Model Context Protocol (MCP) server</strong> that acts as a
+    typed security boundary with <em>zero generic execution endpoints</em> — meaning no
+    <code>os.system</code> or <code>subprocess</code> calls are available to the LLM.
+  </p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <h3>Kernel-Level Enforcement</h3>
+      <p>Evidence is mounted read-only via Docker volume mounts. The Linux kernel — not the LLM's logic — prevents any write operations, protecting chain of custody.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🛡️</div>
+      <h3>Non-Root Sentinel Isolation</h3>
+      <p>The analysis container runs as a non-root <code>sentinel</code> user. A <code>_safe_path()</code> function blocks all directory traversal attempts.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🧹</div>
+      <h3>Ephemeral Sandboxes</h3>
+      <p>Dynamic analysis occurs within isolated Docker sandboxes that are completely wiped post-triage, preventing persistence or lateral movement from the sample.</p>
+    </div>
+  </div>
+
+  <div class="code-block">
+<span class="cm"># MCP Server: no generic shell exec — only typed forensic tools</span>
+<span class="kw">def</span> scan_yara(file_path: str) -> dict: ...
+<span class="kw">def</span> compute_hashes(file_path: str) -> dict: ...
+<span class="kw">def</span> run_volatility(image_path: str, plugin: str) -> dict: ...
+<span class="cm"># os.system / subprocess.run NOT exposed to LLM</span>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- ZERO HALLUCINATION -->
+  <h2>The Death of AI Hallucinations in Forensics</h2>
+
+  <p>
+    Hallucinations are a critical failure mode for LLMs, but in a forensic context, an
+    unverified AI finding is more than a mistake — it is potentially <strong>perjurious in a
+    court of law</strong>. SIFT-AID implements a <em>Zero-Hallucination Mechanism</em> through
+    a strict <code>node_validate</code> function.
+  </p>
+  <p>
+    The system will not allow a finding to enter a final report unless it is programmatically
+    grounded in actual tool output. If a finding lacks verifiable provenance, it is moved to a
+    <code>hallucination_flags</code> metadata field and excluded from the analyst's report.
+  </p>
+
+  <div class="callout">
+    To be confirmed, every finding must cite: (1) the specific originating MCP tool call,
+    (2) an accurate execution timestamp, and (3) the raw output snippet from the forensic tool.
+  </div>
+
+  <p>
+    This "cite-as-you-go" requirement transforms the LLM from a probabilistic guesser into a
+    <strong>high-speed interface for verified data</strong> — one that an analyst can trust
+    in a legal proceeding.
+  </p>
+
+  <hr class="section-divider" />
+
+  <!-- SELF CORRECTION -->
+  <h2>Stateful Self-Correction (Without the Infinite Loop)</h2>
+
+  <p>
+    Forensic evidence is often ambiguous or obfuscated. To handle this, SIFT-AID uses a
+    <strong>LangGraph-based cyclic state machine</strong> that allows for Stateful
+    Self-Correction. If the system's Validate node determines that the confidence score is too
+    low or findings are insufficient, it triggers a re-analysis cycle.
+  </p>
+  <p>
+    Critically, this logic is enforced in <strong>Python routing code</strong>, not by the LLM
+    itself. The system applies a hard cap of <code>max_iterations=3</code> that the model
+    cannot override.
+  </p>
+
+  <div class="callout">
+    In the DFRWS Rodeo case study, the dataset contained steganographically hidden data rather
+    than traditional malware. Because standard YARA and IOC tools produced zero high-confidence
+    signals, the agent correctly exhausted its toolset and — instead of forcing a binary
+    "Malicious" verdict — escalated to <strong>"ANALYST REVIEW."</strong>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- RESULTS -->
+  <h2>A 180-Second Triage for a Multi-Hour Problem</h2>
+
+  <p>
+    In testing against four major NIST and DFRWS forensic datasets, the system consistently
+    completed full triage cycles in <strong>under 200 seconds</strong>:
+  </p>
+
+  <table class="results-table">
+    <thead>
+      <tr>
+        <th>Dataset</th>
+        <th>Wall Time</th>
+        <th>Verdict</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>NIST CFReDS Hacking Case</td>
+        <td>174 s</td>
+        <td><span class="badge badge-review">Analyst Review</span></td>
+      </tr>
+      <tr>
+        <td>2020 Jimmy Wilson (Insider Threat)</td>
+        <td>153 s</td>
+        <td><span class="badge badge-malicious">Malicious</span></td>
+      </tr>
+      <tr>
+        <td>CFReDS Data Leakage 2015</td>
+        <td>144 s</td>
+        <td><span class="badge badge-malicious">Malicious</span></td>
+      </tr>
+      <tr>
+        <td>DFRWS 2005 Rodeo Challenge</td>
+        <td>184 s</td>
+        <td><span class="badge badge-review">Analyst Review</span></td>
+      </tr>
+      <tr>
+        <td>Clean Software Validation (15 Binaries)</td>
+        <td>130 s</td>
+        <td><span class="badge badge-benign">Benign — 100% Precision</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Perhaps most importantly for SOC operations, the system demonstrated
+    <strong>100% precision on clean software validation</strong>. By correctly identifying
+    15 known-benign binaries as benign, SIFT-AID proves it can handle the "noise" of a
+    production environment without drowning analysts in false positives.
+  </p>
+
+  <hr class="section-divider" />
+
+  <!-- SOC READY -->
+  <h2>SOC-Ready Automation: MITRE ATT&amp;CK and STIX</h2>
+
+  <p>
+    Speed is only half the battle — output must be <em>actionable</em>. SIFT-AID automates
+    the entire intelligence enrichment pipeline to make findings immediately useful for
+    Security Operations Centers:
+  </p>
+
+  <ul class="styled">
+    <li>
+      <strong>Persistent Cross-Incident Learning:</strong> Using a LanceDB-backed vector
+      store, the system maintains persistent IOC memory. When a previously seen indicator is
+      encountered, the agent flags it for cross-incident correlation.
+    </li>
+    <li>
+      <strong>Automated ATT&amp;CK Mapping:</strong> Artifacts are automatically mapped to
+      approximately 30 MITRE ATT&amp;CK techniques, with valid STIX 2.1 bundles generated
+      for immediate ingestion into SOAR or SIEM platforms.
+    </li>
+    <li>
+      <strong>Prompt-Injection-Resistant Containment:</strong> The ContainmentSpecialist
+      node generates firewall rule text (<code>iptables</code>/<code>nftables</code>) for
+      human review only. It <em>never</em> auto-applies these rules, ensuring an adversary
+      cannot manipulate the host network state via the LLM.
+    </li>
+  </ul>
+
+  <div class="code-block">
+<span class="cm"># Output artifacts per triage case</span>
+output/cases/INC-{id}/
+  report/report.json         <span class="cm"># machine-readable, tool-cited</span>
+  report/report.md           <span class="cm"># analyst-ready markdown</span>
+  report/stix_bundle.json    <span class="cm"># STIX 2.1 for SIEM/SOAR</span>
+  logs/execution_trace.jsonl <span class="cm"># append-only audit trail</span>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- CONCLUSION CTA -->
+  <h2>The Future of the Autonomous Analyst</h2>
+
+  <p>
+    SIFT-AID represents a significant maturation of AI in cybersecurity. It moves the industry
+    beyond "AI-as-a-chatbot" and toward <strong>"AI-as-an-auditable-microservice."</strong>
+    By grounding the agent in kernel-enforced architectural guardrails rather than fragile
+    prompt-based instructions, SIFT-AID ensures that forensic integrity is never sacrificed
+    for speed.
+  </p>
+
+  <div class="cta-box">
+    <h3>Is Architectural Autonomy Our Only Path Forward?</h3>
+    <p>
+      As attackers move toward sub-minute exploitation, can we afford to keep humans at
+      the center of the initial triage loop? The results suggest that the era of the
+      autonomous analyst has arrived — and it is both safe and verifiable.
+    </p>
+    <a href="https://github.com/jamal-boussouf/SIFT-Sentinel" class="cta-btn">
+      View SIFT-AID on GitHub →
+    </a>
+  </div>
+
+</main>
+
+<footer>
+  <p>SIFT-AID Research Blog &nbsp;·&nbsp; SIFT-Sentinel Project &nbsp;·&nbsp; 2026</p>
+  <p style="margin-top:0.4rem; color:#334155;">
+    Built on the SANS SIFT Workstation &nbsp;|&nbsp; LangGraph &nbsp;|&nbsp; MCP &nbsp;|&nbsp; STIX 2.1
+  </p>
+</footer>
+
+</body>
+</html>

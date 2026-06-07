@@ -1,0 +1,10 @@
+--- agents/orchestrator.py
++++ agents/orchestrator.py
+@@ -355,7 +355,7 @@
+                 options={'temperature': 0.0, 'num_predict': 200},
+                 keep_alive='5m',
+             ),
+-            timeout=LLM_TIMEOUT,
++            timeout=min(LLM_TIMEOUT, max(1, NODE_TIMEOUT - 5)),
+         )
+         msg = getattr(response, 'message', response)

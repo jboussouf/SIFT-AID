@@ -1,0 +1,100 @@
+# ── SIFT-AID docker-compose ──────────────────────────────────────────────────
+
+services:
+  # ── Main container (Web Dashboard / Orchestrator) ──────────────────────────
+  # Mode 2 (Docker Compose): dashboard + sandbox + ollama all in one stack.
+  # Per-sample sandbox containers can be created if DOCKER_SOCK is mounted.
+  main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sift-aid-main
+    image: sift-aid:1.0.0
+    environment:
+      - EVIDENCE_ROOT=/evidence
+      - CASES_DIR=/cases/cases
+      - YARA_RULES_DIR=/yara_rules
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VT_API_KEY=${VT_API_KEY:-}
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen:1.8b}
+      # In Docker Compose mode, default to the persistent sandbox service.
+      # Set SANDBOX_MODE=docker to create ephemeral per-sample containers instead.
+      - SANDBOX_MODE=remote
+      - CAPE_API_URL=http://sandbox:8000/apiv2
+    volumes:
+      - ${EVIDENCE_PATH:-./sample_data}:/evidence:ro
+      - ./yara_rules:/yara_rules:ro
+      - ./output/cases:/cases/cases
+      - ./output/logs:/logs
+      # Mount Docker socket for per-sample ephemeral sandbox containers
+      # (only needed if SANDBOX_MODE=docker)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8000:8000"
+    entrypoint: ["uvicorn", "dashboard.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  # ── Sandbox container (Analysis Engine) ────────────────────────────────────
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sift-aid-sandbox
+    image: sift-aid:1.0.0
+    entrypoint: ["uvicorn"]
+    environment:
+      - EVIDENCE_ROOT=/evidence
+      - CASES_DIR=/cases/cases
+      - YARA_RULES_DIR=/yara_rules
+      - TOOL_TIMEOUT=60
+      - NODE_TIMEOUT=120
+      - MAX_ITERATIONS=3
+      - CONFIDENCE_THRESHOLD=0.70
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VT_API_KEY=${VT_API_KEY:-}
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen:1.8b}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ${EVIDENCE_PATH:-./sample_data}:/evidence:ro
+      - ./yara_rules:/yara_rules:ro
+      - ./output/cases:/cases/cases
+      - ./output/logs:/logs
+    # Run the lightweight CAPE API mock server in the sandbox container
+    command: ["sandbox_api:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8001:8000"
+    restart: "unless-stopped"
+
+  # ── Ollama LLM ─────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sift-aid-ollama
+    pull_policy: always
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen:1.8b}
+    volumes:
+      - ollama_models:/root/.ollama
+    expose:
+      - "11434"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "/bin/ollama serve & sleep 5 && /bin/ollama pull gemma3:4b && /bin/ollama pull qwen:1.8b && /bin/ollama pull llama3:latest && wait $!"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list 2>/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 180s
+    restart: unless-stopped
+
+volumes:
+  ollama_models:

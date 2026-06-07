@@ -1,0 +1,44 @@
+# SIFT-AID Python Dependencies
+# Managed with uv: uv pip install -r requirements.txt
+
+# ── Core orchestration ────────────────────────────────────────────────────────
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
+# ── MCP server ────────────────────────────────────────────────────────────────
+mcp>=1.0.0
+
+# ── VirusTotal (official SDK) ──────────────────────────────────────────────
+vt-py>=0.18.0
+httpx>=0.27.0          # kept for other HTTP utilities
+
+# ── Data validation ───────────────────────────────────────────────────────────
+pydantic>=2.0.0
+
+# ── Vector memory (IOC deduplication, past case recall) ──────────────────────
+lancedb>=0.12.0
+pylance>=0.12.0
+pyarrow>=14.0.0
+
+# ── YARA bindings (python-yara preferred, CLI fallback) ───────────────────────
+yara-python>=4.5.0
+
+# ── Volatility 3 (memory forensics) ──────────────────────────────────────────
+volatility3>=2.7.0
+
+# ── Local LLM client (Ollama) ─────────────────────────────────────────────────
+ollama>=0.3.0
+
+# ── Logging / utilities ───────────────────────────────────────────────────────
+python-dateutil>=2.9.0
+rich>=13.0.0
+
+# ── STIX intelligence export ──────────────────────────────────────────────────
+stix2>=3.0.0
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+fastapi
+uvicorn
+python-multipart

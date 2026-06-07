@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIFT-AID - Autonomous Malware Triage</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#151e2e',
+                            900: '#0f172a',
+                            950: '#020617',
+                        }
+                    },
+                    animation: {
+                        'dash': 'dash 2s linear infinite',
+                    },
+                    keyframes: {
+                        dash: {
+                            '0%': { strokeDashoffset: '20' },
+                            '100%': { strokeDashoffset: '0' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for terminal and lists */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        .pipeline-line {
+            transition: all 0.5s ease;
+        }
+
+        .node-active {
+            border-color: #06b6d4;
+            /* cyan-500 */
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+            color: #22d3ee;
+            /* cyan-400 */
+        }
+
+        .node-complete {
+            border-color: #10b981;
+            /* emerald-500 */
+            color: #34d399;
+            /* emerald-400 */
+        }
+
+        .node-warning {
+            border-color: #f59e0b;
+            /* amber-500 */
+            color: #fbbf24;
+            /* amber-400 */
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+        }
+
+        #correction-loop {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        #correction-loop.active {
+            opacity: 1;
+        }
+
+        .report-tab {
+            color: #64748b;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .report-tab:hover {
+            color: #cbd5e1;
+        }
+
+        .active-tab {
+            color: #22d3ee !important;
+            border-bottom: 2px solid #22d3ee;
+            background: rgba(6, 182, 212, 0.05);
+        }
+
+        /* ── Custom Model Dropdown ────────────────────────────────── */
+        #model-dropdown-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 6px 10px;
+            cursor: pointer;
+            min-width: 160px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: #e2e8f0;
+            position: relative;
+            user-select: none;
+        }
+
+        #model-dropdown-btn:hover {
+            border-color: #06b6d4;
+            box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
+        }
+
+        #model-dropdown-btn.open {
+            border-color: #06b6d4;
+            box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
+        }
+
+        #model-dropdown-btn .model-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 5px;
+            background: linear-gradient(135deg, #0e7490, #164e63);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        #model-dropdown-btn .chevron {
+            margin-left: auto;
+            color: #64748b;
+            transition: transform 0.2s;
+        }
+
+        #model-dropdown-btn.open .chevron {
+            transform: rotate(180deg);
+        }
+
+        #model-dropdown-panel {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            min-width: 240px;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            padding: 6px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(6, 182, 212, 0.08);
+            z-index: 100;
+            overflow: hidden;
+        }
+
+        #model-dropdown-panel.open {
+            display: block;
+            animation: dropdownFadeIn 0.15s ease;
+        }
+
+        @keyframes dropdownFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .model-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .model-option:hover {
+            background: rgba(6, 182, 212, 0.08);
+        }
+
+        .model-option.selected {
+            background: rgba(6, 182, 212, 0.12);
+        }
+
+        .model-option .model-icon-sm {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #0e7490, #164e63);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 11px;
+            font-weight: 700;
+            color: #67e8f9;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: -0.5px;
+        }
+
+        .model-option .model-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: #e2e8f0;
+            white-space: nowrap;
+            flex: 1;
+        }
+
+        .model-option .model-tag {
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #1e293b;
+            color: #64748b;
+            white-space: nowrap;
+        }
+
+        .model-option.selected .model-name {
+            color: #22d3ee;
+        }
+
+        .model-option .check-icon {
+            color: #22d3ee;
+            flex-shrink: 0;
+        }
+
+        #model-dropdown-panel .dropdown-header {
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #475569;
+            padding: 4px 10px 6px;
+            border-bottom: 1px solid #1e293b;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-900 text-slate-300 font-sans h-screen flex flex-col overflow-hidden selection:bg-cyan-500/30">
+
+    <!-- Top Header -->
+    <header class="h-16 border-b border-slate-800 bg-slate-900 flex items-center justify-between px-6 shrink-0 z-10">
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center text-cyan-400 font-bold text-xl tracking-tight">
+                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z">
+                    </path>
+                </svg>
+                SIFT-AID
+            </div>
+
+            <div class="h-6 w-px bg-slate-700"></div>
+
+            <!-- Environment Indicator -->
+            <div id="env-indicator" class="flex bg-slate-900 rounded-lg p-1 border border-slate-800">
+                <div
+                    class="px-3 py-1 rounded-md text-xs font-semibold bg-slate-800 text-slate-400 flex items-center animate-pulse">
+                    Detecting Environment...
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-4 text-sm">
+            <div class="flex items-center space-x-1.5" id="status-ollama">
+                <span id="dot-ollama" class="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></span>
+                <span id="label-ollama" class="text-slate-500">Ollama&hellip;</span>
+            </div>
+            <div class="h-3 w-px bg-slate-800"></div>
+            <div class="flex items-center space-x-1.5" id="status-lancedb">
+                <span id="dot-lancedb" class="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></span>
+                <span id="label-lancedb" class="text-slate-500">LanceDB</span>
+            </div>
+            <div class="h-3 w-px bg-slate-800"></div>
+            <div class="flex items-center space-x-1.5" id="status-mcp">
+                <span id="dot-mcp" class="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></span>
+                <span id="label-mcp" class="text-slate-500">MCP Server</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Area -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- Center Content -->
+        <main class="flex-1 relative overflow-y-auto bg-slate-850 p-8 flex flex-col">
+
+            <!-- STATE 1: INITIAL (Upload) -->
+            <div id="state-initial" class="max-w-3xl w-full mx-auto my-auto flex flex-col items-center">
+                <div class="mb-8 text-center">
+                    <h1 class="text-3xl font-semibold text-white mb-2">Autonomous Malware Triage</h1>
+                    <p class="text-slate-400" id="helper-text">Upload a forensic image to begin analysis.</p>
+                </div>
+
+                <!-- Drop Zone -->
+                <div id="drop-zone"
+                    class="w-full border-2 border-dashed border-slate-600 hover:border-cyan-500 bg-slate-900/50 hover:bg-slate-900 rounded-2xl p-12 flex flex-col items-center justify-center cursor-pointer transition-all duration-200 group">
+                    <input type="file" id="file-input" class="hidden"
+                        accept=".E01,.e01,.raw,.dd,.img,.001,.002,.003,.004,.005,.bin,.exe">
+                    <div id="drop-icon"
+                        class="w-16 h-16 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mb-5 group-hover:border-cyan-500/60 group-hover:bg-slate-800/80 transition-all">
+                        <svg class="w-8 h-8 text-slate-500 group-hover:text-cyan-400 transition-colors" fill="none"
+                            stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                    </div>
+                    <p class="text-white font-semibold text-lg mb-1">Drop your forensic image here</p>
+                    <p class="text-slate-500 text-sm mb-4">or <span
+                            class="text-cyan-400 underline underline-offset-2 cursor-pointer hover:text-cyan-300 transition-colors"
+                            onclick="document.getElementById('file-input').click()">browse to upload</span></p>
+                    <div class="flex flex-wrap gap-2 justify-center">
+                        <span class="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded font-mono">.E01</span>
+                        <span class="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded font-mono">.raw</span>
+                        <span class="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded font-mono">.dd</span>
+                        <span class="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded font-mono">.img</span>
+                        <span class="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded font-mono">.bin</span>
+                        <span class="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded font-mono">.exe</span>
+                    </div>
+                </div>
+
+                <!-- Upload progress / selected file card -->
+                <div id="upload-status" class="w-full mt-4 hidden">
+                    <div class="bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 flex items-center space-x-4">
+                        <div id="upload-icon-wrap"
+                            class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
+                            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p id="upload-filename" class="text-white text-sm font-mono truncate">—</p>
+                            <div id="upload-progress-wrap" class="mt-2">
+                                <div class="flex justify-between text-xs text-slate-500 mb-1">
+                                    <span id="upload-label">Uploading…</span>
+                                    <span id="upload-pct">0%</span>
+                                </div>
+                                <div class="w-full bg-slate-800 rounded-full h-1.5">
+                                    <div id="upload-bar" class="bg-cyan-500 h-1.5 rounded-full transition-all"
+                                        style="width:0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <button id="btn-remove-file"
+                            class="text-slate-500 hover:text-red-400 transition-colors ml-2 shrink-0" title="Remove">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Action bar -->
+                <div
+                    class="w-full mt-6 flex items-center justify-between bg-slate-900 rounded-xl p-5 border border-slate-800">
+                    <div class="flex space-x-8 items-center">
+                        <label class="flex items-center space-x-3 cursor-pointer">
+                            <div class="relative">
+                                <input type="checkbox" class="sr-only" checked>
+                                <div class="block bg-cyan-600 w-10 h-6 rounded-full"></div>
+                                <div
+                                    class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform translate-x-4">
+                                </div>
+                            </div>
+                            <span class="text-slate-300 font-medium">Enable Sandbox (CAPE)</span>
+                        </label>
+                        <label class="flex items-center space-x-3 cursor-pointer">
+                            <div class="relative">
+                                <input type="checkbox" class="sr-only" checked>
+                                <div class="block bg-cyan-600 w-10 h-6 rounded-full"></div>
+                                <div
+                                    class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform translate-x-4">
+                                </div>
+                            </div>
+                            <span class="text-slate-300 font-medium">Use LanceDB IOC Memory</span>
+                        </label>
+                        <div class="flex items-center space-x-2">
+                            <label class="text-slate-400 text-sm font-medium whitespace-nowrap">Model:</label>
+                            <div style="position:relative;">
+                                <div id="model-dropdown-btn" role="combobox" aria-haspopup="listbox"
+                                    aria-expanded="false">
+                                    <span class="model-icon">
+                                        <svg width="12" height="12" fill="none" stroke="#67e8f9" stroke-width="2"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                        </svg>
+                                    </span>
+                                    <span id="model-selected-label">Loading…</span>
+                                    <svg class="chevron" width="14" height="14" fill="none" stroke="currentColor"
+                                        stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                                <div id="model-dropdown-panel" role="listbox">
+                                    <div class="dropdown-header">Available models</div>
+                                    <div id="model-options-list">
+                                        <div class="model-option"><span class="model-name"
+                                                style="color:#475569">Loading…</span></div>
+                                    </div>
+                                </div>
+                                <!-- Hidden real select for form value -->
+                                <select id="model-selector" style="display:none;">
+                                    <option value="">Loading...</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="btn-initiate"
+                        class="ml-4 shrink-0 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-semibold shadow-[0_0_15px_rgba(8,145,178,0.5)] transition-all flex items-center"
+                        disabled>
+                        Initiate Triage
+                        <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- STATE 2: PROCESSING (Pipeline) -->
+            <div id="state-processing" class="w-full flex flex-col h-full hidden">
+                <div class="flex justify-between items-center mb-8 shrink-0">
+                    <h2 class="text-xl font-semibold text-white flex items-center">
+                        <span class="animate-pulse w-3 h-3 bg-cyan-500 rounded-full mr-3"></span>
+                        Triage Execution Pipeline
+                    </h2>
+                    <span class="text-slate-400 text-sm font-mono" id="pipeline-timer">00:00</span>
+                </div>
+
+                <!-- Pipeline Visualizer -->
+                <div
+                    class="relative w-full mb-8 bg-slate-900 border border-slate-800 rounded-xl p-8 shrink-0 overflow-x-auto">
+                    <!-- SVG lines -->
+                    <svg class="absolute top-1/2 left-0 w-full h-24 -translate-y-1/2 z-0 pointer-events-none"
+                        style="min-width: 800px;">
+                        <line x1="10%" y1="50%" x2="90%" y2="50%" stroke="#1e293b" stroke-width="3" />
+                        <line id="progress-line" x1="10%" y1="50%" x2="10%" y2="50%" stroke="#06b6d4" stroke-width="3"
+                            class="pipeline-line" />
+
+                        <!-- Correction Loop Arrow -->
+                        <g id="correction-loop">
+                            <path d="M 75% 45% C 70% -10%, 55% -10%, 50% 45%" fill="none" stroke="#f59e0b"
+                                stroke-width="2" stroke-dasharray="6,4" class="animate-dash" />
+                            <polygon points="50%,45% 48%,38% 52%,38%" fill="#f59e0b" />
+                            <rect x="60%" y="10%" rx="4" ry="4" width="80" height="20" fill="#f59e0b" />
+                            <text x="60%" y="10%" dx="40" dy="14" fill="#000" font-size="10" font-family="monospace"
+                                font-weight="bold" text-anchor="middle">ITERATION 2/3</text>
+                        </g>
+                    </svg>
+
+                    <div class="relative z-10 flex justify-between items-center w-full min-w-[800px]">
+                        <!-- Nodes -->
+                        <div class="node text-center w-24" data-index="0" data-pct="10%">
+                            <div
+                                class="w-12 h-12 mx-auto rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center mb-2 transition-all">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-500">Ingest</span>
+                        </div>
+                        <div class="node text-center w-24" data-index="1" data-pct="23%">
+                            <div
+                                class="w-12 h-12 mx-auto rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center mb-2 transition-all">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-500">Hash</span>
+                        </div>
+                        <div class="node text-center w-24" data-index="2" data-pct="36%">
+                            <div
+                                class="w-12 h-12 mx-auto rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center mb-2 transition-all">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-500">YARA</span>
+                        </div>
+                        <div class="node text-center w-24" data-index="3" data-pct="50%">
+                            <div
+                                class="w-12 h-12 mx-auto rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center mb-2 transition-all">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-500">Volatility</span>
+                        </div>
+                        <div class="node text-center w-24" id="node-sandbox" data-index="4" data-pct="63%">
+                            <div
+                                class="w-12 h-12 mx-auto rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center mb-2 transition-all">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                                </svg>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-500">Sandbox</span>
+                        </div>
+                        <div class="node text-center w-24" id="node-validate" data-index="5" data-pct="76%">
+                            <div
+                                class="w-12 h-12 mx-auto rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center mb-2 transition-all">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-500">Validate</span>
+                        </div>
+                        <div class="node text-center w-24" data-index="6" data-pct="90%">
+                            <div
+                                class="w-12 h-12 mx-auto rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center mb-2 transition-all">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-500">Report</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Terminal -->
+                <div
+                    class="flex-1 bg-[#0a0f18] rounded-xl border border-slate-800 flex flex-col overflow-hidden shadow-inner">
+                    <div class="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center shrink-0">
+                        <div class="flex space-x-2 mr-4">
+                            <div class="w-3 h-3 rounded-full bg-slate-700"></div>
+                            <div class="w-3 h-3 rounded-full bg-slate-700"></div>
+                            <div class="w-3 h-3 rounded-full bg-slate-700"></div>
+                        </div>
+                        <span class="text-xs font-mono text-slate-500">execution_trace.jsonl</span>
+                    </div>
+                    <div class="p-4 overflow-y-auto font-mono text-[13px] leading-relaxed flex-1" id="terminal-logs">
+                        <!-- Logs injected here via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- STATE 3: COMPLETE (Dashboard) -->
+            <!-- STATE 3: COMPLETE (Report Viewer) -->
+            <div id="state-complete" class="w-full hidden flex-col" style="min-height:100%">
+                <!-- Header -->
+                <div class="flex justify-between items-center mb-5 shrink-0">
+                    <h2 class="text-2xl font-bold text-white">Triage Report: <span id="rpt-incident-id"
+                            class="text-slate-400 font-mono">—</span></h2>
+                    <div class="flex space-x-2">
+                        <button id="btn-dl-md"
+                            class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-300 transition-colors flex items-center border border-slate-700">
+                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            Report.md
+                        </button>
+                        <button id="btn-dl-stix"
+                            class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-300 transition-colors flex items-center border border-slate-700">
+                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            STIX 2.1
+                        </button>
+                        <button id="btn-dl-json"
+                            class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-300 transition-colors flex items-center border border-slate-700">
+                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            JSON
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Summary bar -->
+                <div class="grid grid-cols-4 gap-4 mb-5 shrink-0">
+                    <div id="rpt-verdict-card"
+                        class="col-span-1 bg-slate-900 border border-slate-700 rounded-xl p-5 flex flex-col justify-center relative overflow-hidden">
+                        <div class="absolute top-0 right-0 w-20 h-20 bg-slate-800/50 rounded-bl-full"></div>
+                        <h3 id="rpt-verdict-label"
+                            class="text-xs text-slate-400 font-semibold tracking-wider mb-1 uppercase">Final Verdict
+                        </h3>
+                        <div id="rpt-verdict" class="text-3xl font-bold text-slate-300 mb-1">—</div>
+                        <div id="rpt-confidence" class="text-slate-400 text-sm">Confidence: —</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                        <div class="text-xs text-slate-500 uppercase font-semibold mb-1">Sample</div>
+                        <div id="rpt-sample" class="text-sm text-white font-mono truncate">—</div>
+                        <div id="rpt-iterations" class="text-xs text-slate-400 mt-1">—</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                        <div class="text-xs text-slate-500 uppercase font-semibold mb-1">Wall Time</div>
+                        <div id="rpt-walltime" class="text-sm text-white">—</div>
+                        <div id="rpt-nodes" class="text-xs text-emerald-400 mt-1">—</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                        <div class="text-xs text-slate-500 uppercase font-semibold mb-1">Confidence Scores</div>
+                        <div class="flex flex-col space-y-1 mt-1">
+                            <div class="flex justify-between text-xs"><span class="text-slate-400">Static</span><span
+                                    id="rpt-static-score" class="text-cyan-400 font-mono">—</span></div>
+                            <div class="flex justify-between text-xs"><span class="text-slate-400">Dynamic</span><span
+                                    id="rpt-dynamic-score" class="text-cyan-400 font-mono">—</span></div>
+                            <div class="flex justify-between text-xs"><span class="text-slate-400">Overall</span><span
+                                    id="rpt-overall-score" class="text-white font-mono font-bold">—</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="flex space-x-1 mb-4 shrink-0 border-b border-slate-800 pb-0">
+                    <button class="report-tab active-tab px-4 py-2 text-sm font-medium rounded-t-lg"
+                        data-tab="findings">Findings</button>
+                    <button class="report-tab px-4 py-2 text-sm font-medium rounded-t-lg" data-tab="iocs">IOCs</button>
+                    <button class="report-tab px-4 py-2 text-sm font-medium rounded-t-lg"
+                        data-tab="attack">ATT&amp;CK</button>
+                    <button class="report-tab px-4 py-2 text-sm font-medium rounded-t-lg"
+                        data-tab="log">Log</button>
+                    <button class="report-tab px-4 py-2 text-sm font-medium rounded-t-lg"
+                        data-tab="containment">Containment</button>
+                    <button class="report-tab px-4 py-2 text-sm font-medium rounded-t-lg"
+                        data-tab="performance">Performance</button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="flex-1 overflow-y-auto">
+                    <!-- Findings Tab -->
+                    <div id="tab-findings" class="tab-content space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                                <h3 class="text-sm text-emerald-400 font-semibold uppercase mb-3">✓ Confirmed Findings
+                                </h3>
+                                <div id="rpt-findings" class="space-y-3 text-sm text-slate-400">Loading...</div>
+                            </div>
+                            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                                <h3 class="text-sm text-amber-400 font-semibold uppercase mb-3">? Inferences</h3>
+                                <div id="rpt-inferences" class="space-y-3 text-sm text-slate-400">Loading...</div>
+                            </div>
+                        </div>
+                        <div id="rpt-llm-box" class="bg-slate-900 border border-slate-800 rounded-xl p-5 hidden">
+                            <h3 class="text-sm text-cyan-400 font-semibold uppercase mb-2">LLM Cross-Analysis</h3>
+                            <div id="rpt-llm-actions" class="text-sm text-amber-300 leading-relaxed mb-3 font-medium">
+                            </div>
+                            <p id="rpt-llm-reasoning" class="text-sm text-slate-300 leading-relaxed"></p>
+                        </div>
+                    </div>
+
+                    <!-- IOCs Tab -->
+                    <div id="tab-iocs" class="tab-content hidden">
+                        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                            <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                                <h3 class="text-sm text-slate-400 uppercase font-semibold">Extracted Indicators of
+                                    Compromise</h3>
+                                <span id="rpt-ioc-count" class="bg-slate-800 text-slate-300 text-xs px-2 py-1 rounded">0
+                                    items</span>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead>
+                                        <tr class="text-xs text-slate-500 border-b border-slate-800">
+                                            <th class="py-2 px-4">Type</th>
+                                            <th class="py-2 px-4">Value</th>
+                                            <th class="py-2 px-4">Count</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="rpt-iocs-tbody" class="text-sm divide-y divide-slate-800/50"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ATT&CK Tab -->
+                    <div id="tab-attack" class="tab-content hidden">
+                        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                            <h3 class="text-sm text-slate-400 uppercase font-semibold mb-4">MITRE ATT&amp;CK Mapping
+                            </h3>
+                            <div id="rpt-attack" class="space-y-3"></div>
+                        </div>
+                    </div>
+
+                    <!-- Log Tab -->
+                    <div id="tab-log" class="tab-content hidden">
+                        <div class="bg-[#0a0f18] border border-slate-800 rounded-xl overflow-hidden">
+                            <div class="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between">
+                                <div class="flex items-center space-x-3">
+                                    <div class="flex space-x-2">
+                                        <div class="w-3 h-3 rounded-full bg-slate-700"></div>
+                                        <div class="w-3 h-3 rounded-full bg-slate-700"></div>
+                                        <div class="w-3 h-3 rounded-full bg-slate-700"></div>
+                                    </div>
+                                    <span class="text-xs font-mono text-slate-500">execution_trace.jsonl</span>
+                                </div>
+                                <span id="log-tab-count" class="text-xs font-mono text-slate-600">0 entries</span>
+                            </div>
+                            <div id="tab-log-content" class="p-4 overflow-y-auto font-mono text-[13px] leading-relaxed" style="max-height: 60vh;">
+                                <span class="text-slate-600 italic">No log entries yet. Run a triage to populate this view.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Containment Tab -->
+                    <div id="tab-containment" class="tab-content hidden">
+                        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                            <h3 class="text-sm text-slate-400 uppercase font-semibold mb-1">Containment Recommendations
+                            </h3>
+                            <p class="text-xs text-amber-400 mb-4">⚠ Analyst review required before applying any rule.
+                            </p>
+                            <div id="rpt-containment" class="space-y-4"></div>
+                        </div>
+                    </div>
+
+                    <!-- Performance Tab -->
+                    <div id="tab-performance" class="tab-content hidden">
+                        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                            <div class="p-4 border-b border-slate-800">
+                                <h3 class="text-sm text-slate-400 uppercase font-semibold">Node Execution Timings</h3>
+                            </div>
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-xs text-slate-500 border-b border-slate-800">
+                                        <th class="py-2 px-4 text-left">Node</th>
+                                        <th class="py-2 px-4 text-right">Duration (s)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rpt-timings" class="divide-y divide-slate-800/50"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Right Drawer (Provenance & Audit) -->
+        <aside id="audit-drawer"
+            class="w-80 border-l border-slate-800 bg-slate-900 flex flex-col shrink-0 translate-x-full hidden transition-transform duration-300 fixed md:relative h-full z-20 right-0">
+            <div class="h-16 border-b border-slate-800 flex items-center justify-between px-4 shrink-0 bg-slate-900">
+                <h2 class="font-semibold text-white flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z">
+                        </path>
+                    </svg>
+                    Provenance Audit
+                </h2>
+                <button id="close-drawer" class="text-slate-400 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1">
+                <p class="text-sm text-slate-400 mb-6">Execution chain for selected indicator.</p>
+
+                <div class="relative border-l border-slate-700 ml-3 space-y-6 pb-4" id="provenance-timeline">
+                    <!-- Injected via JS -->
+                </div>
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Environment Auto-Detection logic
+            const helperText = document.getElementById('helper-text');
+            const indicator = document.getElementById('env-indicator');
+
+            fetch('/api/env')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.is_docker) {
+                        indicator.innerHTML = `<div class="px-3 py-1 rounded-md text-xs font-semibold bg-cyan-900/50 text-cyan-400 shadow-sm flex items-center"><span class="mr-2">🐳</span> Dockerized Environment</div>`;
+                        helperText.innerText = "Upload forensic images (.E01, .raw, .dd) to begin isolated analysis within Docker volume.";
+                    } else {
+                        indicator.innerHTML = `<div class="px-3 py-1 rounded-md text-xs font-semibold bg-cyan-900/50 text-cyan-400 shadow-sm flex items-center"><span class="mr-2">💻</span> Native SIFT Workstation</div>`;
+                        helperText.innerText = "Specify local path to forensic image to utilize native tools.";
+                    }
+                    // Backend reachable → LanceDB + MCP are up
+                    setStatus('lancedb', true);
+                    setStatus('mcp', true);
+                })
+                .catch(err => {
+                    indicator.innerHTML = `<div class="px-3 py-1 rounded-md text-xs font-semibold bg-red-900/50 text-red-400 shadow-sm flex items-center">Unknown Environment</div>`;
+                    setStatus('lancedb', false);
+                    setStatus('mcp', false);
+                });
+
+            // ── Status dot helpers ───────────────────────────────────────────
+            function setStatus(id, ok) {
+                const dot = document.getElementById(`dot-${id}`);
+                const lbl = document.getElementById(`label-${id}`);
+                if (!dot) return;
+                dot.classList.remove('animate-pulse', 'bg-slate-600', 'bg-emerald-500', 'bg-red-500');
+                if (ok) {
+                    dot.classList.add('bg-emerald-500');
+                    dot.style.boxShadow = '0 0 8px rgba(16,185,129,0.8)';
+                    if (lbl) lbl.classList.replace('text-slate-500', 'text-slate-400');
+                } else {
+                    dot.classList.add('bg-red-500');
+                    dot.style.boxShadow = '0 0 8px rgba(239,68,68,0.8)';
+                    if (lbl) { lbl.classList.replace('text-slate-500', 'text-red-400'); lbl.classList.add('text-red-400'); }
+                }
+            }
+            function setOllamaStatus(ok, modelName) {
+                setStatus('ollama', ok);
+                const lbl = document.getElementById('label-ollama');
+                if (!lbl) return;
+                if (ok && modelName) {
+                    lbl.textContent = `Ollama (${modelName})`;
+                } else if (!ok) {
+                    lbl.textContent = 'Ollama offline';
+                }
+            }
+
+            // ── Custom Model Dropdown ────────────────────────────────────────
+            const modelBtn = document.getElementById('model-dropdown-btn');
+            const modelPanel = document.getElementById('model-dropdown-panel');
+            const modelLabel = document.getElementById('model-selected-label');
+            const modelList = document.getElementById('model-options-list');
+            const modelHidden = document.getElementById('model-selector');
+            let selectedModel = '';
+
+            function modelInitials(name) {
+                // e.g. "qwen:1.8b" -> "QW", "gemma3:4b" -> "GM", "llama3:latest" -> "LL"
+                const base = name.split(':')[0];
+                return base.substring(0, 2).toUpperCase();
+            }
+            function modelTag(name) {
+                const parts = name.split(':');
+                return parts.length > 1 ? parts[1] : 'latest';
+            }
+
+            function buildModelOptions(models) {
+                modelList.innerHTML = '';
+                if (!models || models.length === 0) {
+                    modelList.innerHTML = '<div class="model-option"><span class="model-name" style="color:#475569">No models found</span></div>';
+                    return;
+                }
+                models.forEach((m, i) => {
+                    const div = document.createElement('div');
+                    div.className = 'model-option' + (i === 0 ? ' selected' : '');
+                    div.setAttribute('role', 'option');
+                    div.setAttribute('data-value', m);
+                    div.innerHTML = `
+                        <span class="model-icon-sm">${modelInitials(m)}</span>
+                        <span class="model-name">${m.split(':')[0]}</span>
+                        <span class="model-tag">${modelTag(m)}</span>
+                        ${i === 0 ? '<svg class="check-icon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' : ''}
+                    `;
+                    div.addEventListener('click', () => selectModel(m));
+                    modelList.appendChild(div);
+                });
+                selectModel(models[0]);
+            }
+
+            function selectModel(name) {
+                selectedModel = name;
+                modelLabel.textContent = name;
+                modelHidden.value = name;
+                // update visuals
+                modelList.querySelectorAll('.model-option').forEach(el => {
+                    const isSelected = el.getAttribute('data-value') === name;
+                    el.classList.toggle('selected', isSelected);
+                    const existing = el.querySelector('.check-icon');
+                    if (isSelected && !existing) {
+                        el.insertAdjacentHTML('beforeend', '<svg class="check-icon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>');
+                    } else if (!isSelected && existing) {
+                        existing.remove();
+                    }
+                });
+                // Sync header Ollama label
+                setOllamaStatus(true, name);
+                closeDropdown();
+            }
+
+            function openDropdown() {
+                modelBtn.classList.add('open');
+                modelPanel.classList.add('open');
+                modelBtn.setAttribute('aria-expanded', 'true');
+            }
+            function closeDropdown() {
+                modelBtn.classList.remove('open');
+                modelPanel.classList.remove('open');
+                modelBtn.setAttribute('aria-expanded', 'false');
+            }
+
+            modelBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                modelBtn.classList.contains('open') ? closeDropdown() : openDropdown();
+            });
+            document.addEventListener('click', () => closeDropdown());
+            modelPanel.addEventListener('click', (e) => e.stopPropagation());
+
+            // Fetch available Ollama models
+            fetch('/api/ollama/models')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        modelLabel.textContent = 'LLM error';
+                        modelList.innerHTML = `<div class="model-option"><span class="model-name" style="color:#f87171">Error: ${data.error.substring(0, 40)}</span></div>`;
+                        setOllamaStatus(false, null);
+                    } else {
+                        let models = data.models || [];
+                        models.sort((a, b) => {
+                            const parseSize = name => {
+                                const tag = (name.split(':')[1] || '').toLowerCase();
+                                const match = tag.match(/(\d+(?:\.\d+)?)(b|m)/);
+                                if (match) {
+                                    return parseFloat(match[1]) * (match[2] === 'b' ? 1000 : 1);
+                                }
+                                return 999999;
+                            };
+                            return parseSize(a) - parseSize(b);
+                        });
+                        buildModelOptions(models);
+                        // setOllamaStatus is called inside selectModel → buildModelOptions → selectModel(models[0])
+                    }
+                })
+                .catch(() => {
+                    modelLabel.textContent = 'Ollama unreachable';
+                    modelList.innerHTML = '<div class="model-option"><span class="model-name" style="color:#f87171">Ollama not reachable</span></div>';
+                    setOllamaStatus(false, null);
+                });
+
+            // Triage Workflow
+            const btnInitiate = document.getElementById('btn-initiate');
+            const stateInitial = document.getElementById('state-initial');
+            const stateProcessing = document.getElementById('state-processing');
+            const stateComplete = document.getElementById('state-complete');
+            const terminalLogs = document.getElementById('terminal-logs');
+            const progressLine = document.getElementById('progress-line');
+            const correctionLoop = document.getElementById('correction-loop');
+            const timerEl = document.getElementById('pipeline-timer');
+            let startTime = null;
+            let timerInterval = null;
+            // Log buffer — accumulates all entries during triage for the Log tab
+            let logBuffer = [];
+
+            function updateTimer() {
+                const diff = Math.floor((Date.now() - startTime) / 1000);
+                const m = String(Math.floor(diff / 60)).padStart(2, '0');
+                const s = String(diff % 60).padStart(2, '0');
+                if (timerEl) timerEl.innerText = `${m}:${s}`;
+            }
+
+            function appendLog(log) {
+                const colors = { "INFO": "text-emerald-400", "WARN": "text-amber-400", "ERROR": "text-red-400", "SYSTEM": "text-cyan-400" };
+                const time = new Date().toISOString().split('T')[1].substring(0, 12);
+                const color = colors[log.level] || 'text-slate-400';
+                const logHTML = `<div class="mb-1 opacity-0 translate-y-2" style="animation: fadeUp 0.3s forwards">
+                        <span class="text-slate-500">[${time}]</span>
+                        <span class="${color} font-bold">[${log.level || 'INFO'}]</span>
+                        <span class="text-cyan-600">[${log.module}]</span>
+                        <span class="text-slate-300">${log.msg}</span></div>`;
+                if (terminalLogs) { terminalLogs.innerHTML += logHTML; terminalLogs.scrollTop = terminalLogs.scrollHeight; }
+                // Also push to log buffer for the Log tab
+                logBuffer.push({ time, color, level: log.level || 'INFO', module: log.module, msg: log.msg });
+            }
+
+            function renderLogTab() {
+                const el = document.getElementById('tab-log-content');
+                const countEl = document.getElementById('log-tab-count');
+                if (!el) return;
+                if (logBuffer.length === 0) {
+                    el.innerHTML = '<span class="text-slate-600 italic">No log entries yet. Run a triage to populate this view.</span>';
+                    if (countEl) countEl.textContent = '0 entries';
+                    return;
+                }
+                const colors = { "INFO": "text-emerald-400", "WARN": "text-amber-400", "ERROR": "text-red-400", "SYSTEM": "text-cyan-400" };
+                el.innerHTML = logBuffer.map(entry => {
+                    const c = colors[entry.level] || 'text-slate-400';
+                    return `<div class="mb-1">
+                        <span class="text-slate-500">[${entry.time}]</span>
+                        <span class="${c} font-bold">[${entry.level}]</span>
+                        <span class="text-cyan-600">[${entry.module}]</span>
+                        <span class="text-slate-300">${entry.msg}</span></div>`;
+                }).join('');
+                if (countEl) countEl.textContent = `${logBuffer.length} entr${logBuffer.length === 1 ? 'y' : 'ies'}`;
+                el.scrollTop = el.scrollHeight;
+            }
+
+            // ── Upload / Drag-and-drop logic ───────────────────────────────────
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            const uploadStatus = document.getElementById('upload-status');
+            const uploadBar = document.getElementById('upload-bar');
+            const uploadPct = document.getElementById('upload-pct');
+            const uploadLabel = document.getElementById('upload-label');
+            const uploadFilename = document.getElementById('upload-filename');
+            const btnRemove = document.getElementById('btn-remove-file');
+
+            function setDropActive(on) {
+                if (on) {
+                    dropZone.classList.add('border-cyan-500', 'bg-slate-900', 'scale-[1.01]');
+                    dropZone.classList.remove('border-slate-600');
+                } else {
+                    dropZone.classList.remove('border-cyan-500', 'bg-slate-900', 'scale-[1.01]');
+                    dropZone.classList.add('border-slate-600');
+                }
+            }
+
+            dropZone.addEventListener('click', (e) => {
+                if (e.target.tagName !== 'SPAN') fileInput.click();
+            });
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); setDropActive(true); });
+            dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); setDropActive(false); });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                setDropActive(false);
+                const file = e.dataTransfer.files[0];
+                if (file) uploadFile(file);
+            });
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files[0]) uploadFile(fileInput.files[0]);
+            });
+
+            btnRemove.addEventListener('click', () => {
+                window.selectedFileName = null;
+                btnInitiate.disabled = true;
+                uploadStatus.classList.add('hidden');
+                fileInput.value = '';
+                uploadBar.style.width = '0%';
+                uploadPct.textContent = '0%';
+                uploadLabel.textContent = 'Uploading…';
+            });
+
+            function uploadFile(file) {
+                uploadFilename.textContent = file.name;
+                uploadStatus.classList.remove('hidden');
+                uploadBar.style.width = '0%';
+                uploadPct.textContent = '0%';
+                uploadLabel.textContent = 'Uploading…';
+                btnInitiate.disabled = true;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/upload');
+
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 100);
+                        uploadBar.style.width = pct + '%';
+                        uploadPct.textContent = pct + '%';
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        const resp = JSON.parse(xhr.responseText);
+                        uploadBar.style.width = '100%';
+                        uploadBar.classList.replace('bg-cyan-500', 'bg-emerald-500');
+                        uploadPct.textContent = '100%';
+                        uploadLabel.textContent = `✓ Ready — ${resp.size_mb} MB`;
+                        uploadFilename.textContent = resp.original_name;
+                        window.selectedFileName = resp.file_name;
+                        btnInitiate.disabled = false;
+                    } else {
+                        let errMsg = 'Upload failed';
+                        try { errMsg = JSON.parse(xhr.responseText).detail || errMsg; } catch { }
+                        uploadLabel.textContent = `✗ ${errMsg}`;
+                        uploadBar.classList.replace('bg-cyan-500', 'bg-red-500');
+                        uploadBar.style.width = '100%';
+                    }
+                });
+
+                xhr.addEventListener('error', () => {
+                    uploadLabel.textContent = '✗ Network error — server unreachable';
+                    uploadBar.classList.replace('bg-cyan-500', 'bg-red-500');
+                    uploadBar.style.width = '100%';
+                });
+
+                xhr.send(formData);
+            }
+
+            btnInitiate.addEventListener('click', () => {
+                if (!window.selectedFileName) return;
+                stateInitial.classList.add('hidden');
+                stateProcessing.classList.remove('hidden');
+                startTime = Date.now();
+                timerInterval = setInterval(updateTimer, 1000);
+                startRealTriage(window.selectedFileName);
+            });
+
+            function startRealTriage(fileName) {
+                // Connect to FastAPI WebSocket
+                const wsUrl = `ws://${window.location.host}/ws/triage`;
+                const ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    appendLog({ module: "SYSTEM", level: "INFO", msg: `Connected. Submitting ${fileName} to SIFT-AID...` });
+                    const selectedModel = document.getElementById('model-selector').value;
+                    ws.send(JSON.stringify({ file_name: fileName, model_name: selectedModel }));
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.error) {
+                        appendLog({ module: "SYSTEM", level: "ERROR", msg: data.error });
+                        clearInterval(timerInterval);
+                        return;
+                    }
+
+                    if (data.sandbox_actions && data.sandbox_actions.length > 0) {
+                        data.sandbox_actions.forEach(action => {
+                            let actionStr = `Model requested sandbox action: ${action.action}`;
+                            if (action.command) actionStr += ` | command: ${action.command}`;
+                            if (action.target) actionStr += ` | target: ${action.target}`;
+                            appendLog({ module: "LLM", level: "WARN", msg: actionStr });
+                        });
+                    }
+
+                    if (data.new_interactive_results && data.new_interactive_results.length > 0) {
+                        data.new_interactive_results.forEach(res => {
+                            let msg = `Sandbox returned for ${res.action}: `;
+                            if (res.result) msg += typeof res.result === 'object' ? JSON.stringify(res.result) : res.result;
+                            if (res.error) msg += `ERROR: ${res.error}`;
+                            appendLog({ module: "SANDBOX_INTERACT", level: "INFO", msg: msg });
+                        });
+                    }
+
+                    if (data.attack_techniques && data.attack_techniques.length > 0) {
+                        appendLog({ module: "ATT&CK", level: "SYSTEM", msg: `=== MITRE ATT&CK Mapping Summary ===` });
+                        data.attack_techniques.forEach(t => {
+                            appendLog({ module: "ATT&CK", level: "INFO", msg: `${t.technique_id} | ${t.name} | Evidence: ${t.evidence}` });
+                        });
+                        appendLog({ module: "ATT&CK", level: "SYSTEM", msg: `=== End of ATT&CK Mapping ===` });
+                    }
+
+                    if (data.llm_analysis) {
+                        appendLog({ module: "LLM", level: "INFO", msg: `Analysis Iteration ${data.llm_analysis.iteration} complete.` });
+                        appendLog({ module: "LLM", level: "INFO", msg: `Static Score: ${data.llm_analysis.static_confidence_score} | Dynamic Score: ${data.llm_analysis.dynamic_confidence_score}` });
+                        appendLog({ module: "LLM", level: "INFO", msg: `Reasoning: ${data.llm_analysis.reasoning}` });
+                    }
+
+                    if (data.status === 'completed') {
+                        const incidentId = data.incident_id;
+                        appendLog({ module: "SYSTEM", level: "INFO", msg: `Triage complete. Loading report for ${incidentId}...` });
+                        clearInterval(timerInterval);
+                        setTimeout(() => {
+                            stateProcessing.classList.add('hidden');
+                            stateComplete.classList.remove('hidden');
+                            stateComplete.classList.add('flex');
+                            loadReport(incidentId);
+                        }, 800);
+                        return;
+                    }
+
+                    const nodeName = data.node;
+                    appendLog({ module: nodeName, level: "INFO", msg: `Execution completed for node: ${nodeName}` });
+
+                    // Map LangGraph nodes to UI nodes
+                    const nodeMap = {
+                        "ingest": 0,
+                        "plan": 0,
+                        "execute_specialists": 1, // Actually YARA and Volatility are separate in UI, we will approximate
+                        "dynamic_analysis": 4,
+                        "sandbox_interact": 4,
+                        "validate": 5,
+                        "llm_analysis": 5,
+                        "self_correct": 5,
+                        "enrich_intelligence": 5,
+                        "contain": 6,
+                        "report": 6,
+                        "export_stix": 6
+                    };
+
+                    let nodeIdx = nodeMap[nodeName];
+                    if (nodeIdx !== undefined) {
+                        updateNode(nodeIdx);
+                    }
+                };
+
+                ws.onclose = () => {
+                    appendLog({ module: "SYSTEM", level: "WARN", msg: "WebSocket connection closed." });
+                };
+            }
+
+            function updateNode(index, state = "active") {
+                const node = document.querySelector(`.node[data-index="${index}"]`);
+                if (!node) return;
+
+                // Previous nodes to complete
+                for (let i = 0; i < index; i++) {
+                    const p = document.querySelector(`.node[data-index="${i}"] > div`);
+                    if (p) p.className = "w-12 h-12 mx-auto rounded-full bg-slate-800 flex items-center justify-center mb-2 transition-all border-2 node-complete";
+                }
+
+                // Current node
+                const circle = node.querySelector('div');
+                if (circle) {
+                    if (state === "active") {
+                        circle.className = "w-12 h-12 mx-auto rounded-full bg-slate-800 flex items-center justify-center mb-2 transition-all border-2 node-active";
+                    } else if (state === "warning") {
+                        circle.className = "w-12 h-12 mx-auto rounded-full bg-slate-800 flex items-center justify-center mb-2 transition-all border-2 node-warning";
+                    }
+                }
+
+                // Line progress
+                if (progressLine) progressLine.setAttribute('x2', node.getAttribute('data-pct'));
+            }
+
+            // ── Report Viewer ──────────────────────────────────────────────────
+            function loadReport(incidentId) {
+                document.getElementById('rpt-incident-id').textContent = incidentId;
+
+                // Download buttons
+                ['md', 'stix', 'json'].forEach(type => {
+                    const btn = document.getElementById(`btn-dl-${type}`);
+                    if (btn) btn.onclick = () => { window.location.href = `/api/download/${incidentId}/${type === 'md' ? 'markdown' : type}`; };
+                });
+
+                fetch(`/api/report/${incidentId}`)
+                    .then(r => r.json())
+                    .then(rpt => {
+                        // Summary bar
+                        const v = rpt.incident.verdict || 'UNDETERMINED';
+                        const conf = rpt.confidence.overall || 0;
+                        // vColors: [verdictText, bgCard, borderCard, labelText, subText]
+                        const vColors = {
+                            MALICIOUS: ['text-red-500', 'bg-red-500/10', 'border-red-500/30', 'text-red-400', 'text-red-300/80'],
+                            SUSPICIOUS: ['text-amber-400', 'bg-amber-500/10', 'border-amber-500/30', 'text-amber-300', 'text-amber-200/80'],
+                            BENIGN: ['text-emerald-400', 'bg-emerald-500/10', 'border-emerald-500/30', 'text-emerald-300', 'text-emerald-200/80'],
+                            'ANALYST REVIEW': ['text-cyan-400', 'bg-cyan-500/10', 'border-cyan-500/30', 'text-cyan-300', 'text-cyan-200/80'],
+                        };
+                        const vc = vColors[v] || vColors['ANALYST REVIEW'];
+                        const vCard = document.getElementById('rpt-verdict-card');
+                        vCard.className = `col-span-1 ${vc[1]} border ${vc[2]} rounded-xl p-5 flex flex-col justify-center relative overflow-hidden`;
+                        document.getElementById('rpt-verdict').className = `text-3xl font-bold ${vc[0]} mb-1`;
+                        document.getElementById('rpt-verdict').textContent = v;
+                        document.getElementById('rpt-verdict-label').className = `text-xs ${vc[3]} font-semibold tracking-wider mb-1 uppercase`;
+                        document.getElementById('rpt-confidence').className = `${vc[4]} text-sm`;
+                        document.getElementById('rpt-confidence').textContent = `Confidence: ${(conf * 100).toFixed(1)}%`;
+                        const sampleName = (rpt.incident.sample_path || '').split('/').pop();
+                        document.getElementById('rpt-sample').textContent = sampleName || '—';
+                        document.getElementById('rpt-iterations').textContent = `Iterations: ${rpt.incident.total_iterations}`;
+                        const wallSec = rpt.performance.total_wall_seconds || 0;
+                        const wm = String(Math.floor(wallSec / 60)).padStart(2, '0');
+                        const ws = String(Math.floor(wallSec % 60)).padStart(2, '0');
+                        document.getElementById('rpt-walltime').textContent = `${wm}m ${ws}s`;
+                        const nodeCount = Object.keys(rpt.performance.node_timings_seconds || {}).length;
+                        document.getElementById('rpt-nodes').textContent = `${nodeCount} nodes executed`;
+                        document.getElementById('rpt-static-score').textContent = `${((rpt.confidence.static_analysis || 0) * 100).toFixed(1)}%`;
+                        document.getElementById('rpt-dynamic-score').textContent = `${((rpt.confidence.dynamic_analysis || 0) * 100).toFixed(1)}%`;
+                        document.getElementById('rpt-overall-score').textContent = `${(conf * 100).toFixed(1)}%`;
+
+                        // Findings tab
+                        const fEl = document.getElementById('rpt-findings');
+                        const findings = rpt.confirmed_findings || [];
+                        fEl.innerHTML = findings.length === 0 ? '<span class="text-slate-500 italic">No confirmed findings.</span>' :
+                            findings.map(f => `<div class="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="font-mono text-xs text-emerald-400 font-bold">${f.type}</span>
+                                    <span class="text-xs text-slate-400">${(f.confidence * 100).toFixed(0)}% confidence</span>
+                                </div>
+                                <div class="text-xs text-slate-400 font-mono">${f.source || ''}</div>
+                                ${Object.entries(f).filter(([k]) => !['type', 'confidence', 'source', 'certainty'].includes(k))
+                                    .map(([k, v]) => `<div class="text-xs text-slate-500 mt-0.5"><span class="text-slate-400">${k}:</span> ${v}</div>`).join('')}
+                            </div>`).join('');
+
+                        const iEl = document.getElementById('rpt-inferences');
+                        const inferences = rpt.inferences || [];
+                        iEl.innerHTML = inferences.length === 0 ? '<span class="text-slate-500 italic">No inferences.</span>' :
+                            inferences.map(f => `<div class="bg-slate-800/60 border border-amber-800/30 rounded-lg p-3">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="font-mono text-xs text-amber-400 font-bold">${f.type}</span>
+                                    <span class="text-xs text-slate-400">${(f.confidence * 100).toFixed(0)}% confidence</span>
+                                </div>
+                                <div class="text-xs text-slate-400 font-mono">${f.source || ''}</div>
+                                ${Object.entries(f).filter(([k]) => !['type', 'confidence', 'source', 'certainty'].includes(k))
+                                    .map(([k, v]) => `<div class="text-xs text-slate-500 mt-0.5"><span class="text-slate-400">${k}:</span> ${v}</div>`).join('')}
+                            </div>`).join('');
+
+                        const llm = rpt.llm_analysis;
+                        if (llm && (llm.reasoning || llm.malicious_actions)) {
+                            document.getElementById('rpt-llm-box').classList.remove('hidden');
+                            document.getElementById('rpt-llm-reasoning').textContent = llm.reasoning || '';
+                            const actionsEl = document.getElementById('rpt-llm-actions');
+                            if (llm.malicious_actions) {
+                                actionsEl.textContent = '▸ ' + llm.malicious_actions;
+                                actionsEl.classList.remove('hidden');
+                            } else {
+                                actionsEl.classList.add('hidden');
+                            }
+                        }
+
+                        // IOCs tab
+                        const iocs = (rpt.tool_outputs.extract_iocs || {}).iocs || {};
+                        const tbody = document.getElementById('rpt-iocs-tbody');
+                        let totalIoc = 0;
+                        tbody.innerHTML = Object.entries(iocs).map(([type, vals]) => {
+                            totalIoc += vals.length;
+                            return vals.slice(0, 20).map(val => `<tr class="hover:bg-slate-800/40">
+                                <td class="py-2 px-4 text-slate-400 text-xs uppercase">${type}</td>
+                                <td class="py-2 px-4 font-mono text-sm text-white">${val}</td>
+                                <td class="py-2 px-4 text-xs text-slate-500">${vals.length} total</td>
+                            </tr>`).join('');
+                        }).join('');
+                        document.getElementById('rpt-ioc-count').textContent = `${totalIoc} items`;
+
+                        // ATT&CK tab
+                        const atk = rpt.attack_techniques || [];
+                        const atkEl = document.getElementById('rpt-attack');
+                        const tacticColors = {
+                            'Defense Evasion': 'bg-red-500/20 text-red-400', 'Execution': 'bg-amber-500/20 text-amber-400',
+                            'Command and Control': 'bg-slate-600/50 text-slate-300', 'Persistence': 'bg-purple-500/20 text-purple-400',
+                            'Discovery': 'bg-blue-500/20 text-blue-400', 'Collection': 'bg-cyan-500/20 text-cyan-400'
+                        };
+                        atkEl.innerHTML = atk.length === 0 ? '<span class="text-slate-500 italic">No ATT&CK techniques mapped.</span>' :
+                            atk.map(t => {
+                                const tc = tacticColors[t.tactic] || 'bg-slate-600/50 text-slate-300';
+                                return `<div class="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-cyan-400 font-mono text-sm font-bold">${t.technique_id}</span>
+                                        <span class="text-xs px-2 py-0.5 ${tc} rounded">${t.tactic || ''}</span>
+                                    </div>
+                                    <p class="text-sm font-semibold text-slate-200">${t.name || ''}</p>
+                                    <p class="text-xs text-slate-400 mt-1">${t.evidence || ''}</p>
+                                </div>`;
+                            }).join('');
+
+                        // Containment tab
+                        const fw = rpt.containment.firewall_rules || {};
+                        const cEl = document.getElementById('rpt-containment');
+                        if (fw.iptables_rules && fw.iptables_rules.length) {
+                            cEl.innerHTML = `<div>
+                                <p class="text-xs text-slate-500 uppercase font-semibold mb-2">iptables rules</p>
+                                <pre class="bg-slate-950 rounded p-4 text-xs text-emerald-400 font-mono overflow-x-auto">${fw.iptables_rules.join('\n')}</pre>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500 uppercase font-semibold mb-2">/etc/hosts DNS blocks</p>
+                                <pre class="bg-slate-950 rounded p-4 text-xs text-amber-400 font-mono overflow-x-auto">${(fw.hosts_file_entries || []).join('\n')}</pre>
+                            </div>`;
+                        } else {
+                            cEl.innerHTML = '<span class="text-slate-500 italic">No containment rules generated.</span>';
+                        }
+
+                        // Performance tab
+                        const timings = rpt.performance.node_timings_seconds || {};
+                        const tBody = document.getElementById('rpt-timings');
+                        const total = Object.values(timings).reduce((a, b) => a + b, 0);
+                        tBody.innerHTML = Object.entries(timings).sort((a, b) => b[1] - a[1])
+                            .map(([node, secs]) => `<tr class="hover:bg-slate-800/30">
+                                <td class="py-2 px-4 font-mono text-sm text-slate-300">${node}</td>
+                                <td class="py-2 px-4 text-right font-mono text-sm text-cyan-400">${secs.toFixed(2)}s</td>
+                            </tr>`).join('') +
+                            `<tr class="border-t border-slate-700 font-bold">
+                                <td class="py-2 px-4 text-slate-200">TOTAL</td>
+                                <td class="py-2 px-4 text-right text-white font-mono">${total.toFixed(2)}s</td>
+                            </tr>`;
+                    })
+                    .catch(err => { console.error('Report load failed:', err); });
+
+                // Tab switching
+                document.querySelectorAll('.report-tab').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        document.querySelectorAll('.report-tab').forEach(b => b.classList.remove('active-tab'));
+                        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                        btn.classList.add('active-tab');
+                        document.getElementById(`tab-${btn.dataset.tab}`).classList.remove('hidden');
+                        // Render log buffer when Log tab is activated
+                        if (btn.dataset.tab === 'log') renderLogTab();
+                    });
+                });
+            }
+
+            // Drawer Logic
+            const iocRows = document.querySelectorAll('.ioc-row');
+            const drawer = document.getElementById('audit-drawer');
+            const closeDrawer = document.getElementById('close-drawer');
+            const timeline = document.getElementById('provenance-timeline');
+
+            const provData = {
+                'hash': [
+                    { t: "-02:40", f: "mcp_server.hash_evidence()", msg: "Calculated SHA256 over E01 volume offset 0x1000" },
+                    { t: "-02:38", f: "vt_agent.query()", msg: "Queried VirusTotal v3 API. Rate limit OK." }
+                ],
+                'ip': [
+                    { t: "-01:15", f: "sandbox.extract_network()", msg: "PCAP parsing identified outbound SYN to 185.158.248.51:80" },
+                    { t: "-00:40", f: "lancedb.query_memory()", msg: "Vector search matched IP to INC-2025-102 (Similarity: 0.98)" }
+                ],
+                'domain': [
+                    { t: "-01:15", f: "sandbox.extract_network()", msg: "DNS Request observed for update-sys-windows.com" }
+                ],
+                'file': [
+                    { t: "-02:10", f: "volatility.malfind()", msg: "Found PAGE_EXECUTE_READWRITE memory section at 0x40000 in svchost.exe" }
+                ]
+            };
+
+            iocRows.forEach(row => {
+                row.addEventListener('click', () => {
+                    const type = row.getAttribute('data-provenance');
+                    const data = provData[type];
+
+                    timeline.innerHTML = '';
+                    data.forEach(item => {
+                        timeline.innerHTML += `
+                            <div class="relative">
+                                <span class="absolute -left-[21px] top-1 w-3 h-3 bg-cyan-500 rounded-full border-2 border-slate-900 shadow-[0_0_5px_rgba(6,182,212,0.8)]"></span>
+                                <div class="bg-slate-800/80 border border-slate-700 rounded p-3">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <code class="text-cyan-400 text-xs font-mono">${item.f}</code>
+                                        <span class="text-slate-500 text-xs">${item.t}</span>
+                                    </div>
+                                    <div class="bg-slate-950 p-2 rounded border border-slate-800 font-mono text-xs text-slate-400 mt-1">
+                                        > ${item.msg}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    drawer.classList.remove('hidden');
+                    // slight delay for transition
+                    setTimeout(() => drawer.classList.remove('translate-x-full'), 10);
+                });
+            });
+
+            closeDrawer.addEventListener('click', () => {
+                drawer.classList.add('translate-x-full');
+                setTimeout(() => drawer.classList.add('hidden'), 300);
+            });
+        });
+
+        // Add custom keyframe to document head
+        const style = document.createElement('style');
+        style.innerHTML = `
+            @keyframes fadeUp {
+                to { opacity: 1; transform: translateY(0); }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+
+</html>
