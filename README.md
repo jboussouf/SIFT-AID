@@ -269,12 +269,13 @@ The routing function checks `state["llm_iteration"] < max_llm_iterations` **befo
 ---
 
 ## 6. Accomplishments
-[+] **Sub-3-Minute Triage**: Consistently triages complex NIST/DFRWS datasets in 144s–184s (well under the 8-minute target).
-[+] **Architectural Guardrails**: MCP server with 0 generic execution endpoints; evidence mounted read-only (`:ro`) at the kernel level.
-[+] **Advanced Intelligence Enrichment**: Automated MITRE ATT&CK mapping and valid STIX 2.1 bundle generation for SOAR/SIEM ingestion.
-[+] **Persistent Learning Loop**: LanceDB-backed IOC memory that correlates findings across separate incidents, flagging previously seen indicators.
-[+] **Dynamic Sandbox Integration**: Async, timeout-enforced CAPE/Cuckoo sandbox polling for behavioral analysis without blocking the orchestration loop.
-[+] **Zero-Hallucination Guarantee**: Every finding in the dual-format report is programmatically required to cite its exact MCP function, timestamp, and raw output snippet.
+
+- **Sub-3-Minute Triage**: Consistently triages complex NIST/DFRWS datasets in 144s–184s (well under the 8-minute target).
+- **Architectural Guardrails**: MCP server with 0 generic execution endpoints; evidence mounted read-only (`:ro`) at the kernel level.
+- **Advanced Intelligence Enrichment**: Automated MITRE ATT&CK mapping and valid STIX 2.1 bundle generation for SOAR/SIEM ingestion.
+- **Persistent Learning Loop**: LanceDB-backed IOC memory that correlates findings across separate incidents, flagging previously seen indicators.
+- **Dynamic Sandbox Integration**: Async, timeout-enforced CAPE/Cuckoo sandbox polling for behavioral analysis without blocking the orchestration loop.
+- **Zero-Hallucination Guarantee**: Every finding in the dual-format report is programmatically required to cite its exact MCP function, timestamp, and raw output snippet.
 
 ---
 
