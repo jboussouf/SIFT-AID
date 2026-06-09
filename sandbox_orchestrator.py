@@ -91,10 +91,24 @@ class SandboxOrchestrator:
         self._resolved_mode = "remote"
         self.api_url = REMOTE_API_URL
         log.info("[Sandbox] Remote mode — using %s", REMOTE_API_URL)
+
+        if not await self._check_remote_healthy(REMOTE_API_URL):
+            log.warning("[Sandbox] Remote sandbox %s not reachable — falling back to mock", REMOTE_API_URL)
+            return await self._prepare_mock(sample_path)
+
         return {
             "USE_MOCK_SANDBOX": "False",
             "CAPE_API_URL": REMOTE_API_URL,
         }
+
+    async def _check_remote_healthy(self, api_url: str) -> bool:
+        """Check if the remote sandbox API is reachable (any response = alive)."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.get(api_url.rstrip("/") + "/tasks/status/health/")
+            return True
+        except (httpx.RequestError, httpx.TimeoutException):
+            return False
 
     async def _prepare_docker(self, sample_path: str, incident_id: str | None) -> dict[str, str]:
         self._resolved_mode = "docker"

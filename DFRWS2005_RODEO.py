@@ -23,6 +23,9 @@ os.environ["LOG_LEVEL"] = "INFO"
 # Set a generous timeout (300 seconds) because the image is ~247MB
 os.environ["TOOL_TIMEOUT"] = "300"
 
+# Use mock sandbox by default (no real CAPE server needed)
+os.environ.setdefault("USE_MOCK_SANDBOX", "True")
+
 # Inject current directory into python path to find local modules
 sys.path.insert(0, str(current_dir))
 

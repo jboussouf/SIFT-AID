@@ -408,35 +408,42 @@
                             </div>
                             <span class="text-slate-300 font-medium">Use LanceDB IOC Memory</span>
                         </label>
-                        <div class="flex items-center space-x-2">
-                            <label class="text-slate-400 text-sm font-medium whitespace-nowrap">Model:</label>
-                            <div style="position:relative;">
-                                <div id="model-dropdown-btn" role="combobox" aria-haspopup="listbox"
-                                    aria-expanded="false">
-                                    <span class="model-icon">
-                                        <svg width="12" height="12" fill="none" stroke="#67e8f9" stroke-width="2"
-                                            viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round"
-                                                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        <div class="flex flex-col space-y-2">
+                            <div class="flex items-center space-x-2">
+                                <label class="text-slate-400 text-sm font-medium whitespace-nowrap">Model:</label>
+                                <div style="position:relative;">
+                                    <div id="model-dropdown-btn" role="combobox" aria-haspopup="listbox"
+                                        aria-expanded="false">
+                                        <span class="model-icon">
+                                            <svg width="12" height="12" fill="none" stroke="#67e8f9" stroke-width="2"
+                                                viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                            </svg>
+                                        </span>
+                                        <span id="model-selected-label">Loading…</span>
+                                        <svg class="chevron" width="14" height="14" fill="none" stroke="currentColor"
+                                            stroke-width="2" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
                                         </svg>
-                                    </span>
-                                    <span id="model-selected-label">Loading…</span>
-                                    <svg class="chevron" width="14" height="14" fill="none" stroke="currentColor"
-                                        stroke-width="2" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </div>
-                                <div id="model-dropdown-panel" role="listbox">
-                                    <div class="dropdown-header">Available models</div>
-                                    <div id="model-options-list">
-                                        <div class="model-option"><span class="model-name"
-                                                style="color:#475569">Loading…</span></div>
                                     </div>
+                                    <div id="model-dropdown-panel" role="listbox">
+                                        <div class="dropdown-header">Available models</div>
+                                        <div id="model-options-list">
+                                            <div class="model-option"><span class="model-name"
+                                                    style="color:#475569">Loading…</span></div>
+                                        </div>
+                                    </div>
+                                    <!-- Hidden real select for form value -->
+                                    <select id="model-selector" style="display:none;">
+                                        <option value="">Loading...</option>
+                                    </select>
                                 </div>
-                                <!-- Hidden real select for form value -->
-                                <select id="model-selector" style="display:none;">
-                                    <option value="">Loading...</option>
-                                </select>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <label class="text-slate-400 text-sm font-medium whitespace-nowrap">Timeout (s):</label>
+                                <input id="timeout-input" type="number" min="30" max="3600" value="300"
+                                    class="w-20 bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-cyan-500">
                             </div>
                         </div>
                     </div>
@@ -1136,7 +1143,8 @@
                 ws.onopen = () => {
                     appendLog({ module: "SYSTEM", level: "INFO", msg: `Connected. Submitting ${fileName} to SIFT-AID...` });
                     const selectedModel = document.getElementById('model-selector').value;
-                    ws.send(JSON.stringify({ file_name: fileName, model_name: selectedModel }));
+                    const timeout = parseInt(document.getElementById('timeout-input').value, 10) || 300;
+                    ws.send(JSON.stringify({ file_name: fileName, model_name: selectedModel, timeout: timeout }));
                 };
 
                 ws.onmessage = (event) => {

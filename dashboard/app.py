@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -42,16 +43,29 @@ async def root():
     return FileResponse(os.path.join(static_dir, "index.html"))
 
 @app.get("/api/llm")
-async def llm_check():
-    """Test if Ollama LLM is working by asking 'who are you'."""
+async def llm_list():
+    """Return list of available Ollama models."""
     import ollama
     host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-    model = os.environ.get("OLLAMA_MODEL", "qwen:1.8b")
+    try:
+        client = ollama.AsyncClient(host=host)
+        models = await client.list()
+        names = [m["model"] for m in models.get("models", [])]
+        return {"models": names}
+    except Exception as e:
+        return {"models": [], "error": str(e)}
+
+@app.get("/api/llm/{model}")
+async def llm_check(model: str):
+    """Test a specific Ollama model and set it as the active model."""
+    import ollama
+    host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     try:
         client = ollama.AsyncClient(host=host)
         response = await client.chat(model=model, messages=[
             {"role": "user", "content": "who are you? answer in one sentence."}
         ])
+        os.environ["OLLAMA_MODEL"] = model
         return {"status": "ok", "model": model, "response": response["message"]["content"]}
     except Exception as e:
         return {"status": "error", "model": model, "error": str(e)}
@@ -143,6 +157,7 @@ async def websocket_endpoint(websocket: WebSocket):
         request_data = json.loads(data)
         file_name = request_data.get("file_name")
         model_name = request_data.get("model_name", "")
+        triage_timeout = int(request_data.get("timeout", 300))
 
         if not file_name:
             await websocket.send_text(json.dumps({"error": "No file_name provided"}))
@@ -169,6 +184,7 @@ async def websocket_endpoint(websocket: WebSocket):
             "sandbox_mode": sandbox.resolved_mode,
             "sandbox_url": sandbox.api_url or "mock",
             "model_selected": model_name or "default",
+            "timeout": triage_timeout,
         }))
 
         # Override model if user selected one from dropdown
@@ -219,24 +235,33 @@ async def websocket_endpoint(websocket: WebSocket):
         sent_interactive_count = 0
         
         try:
-            async for output in graph.astream(initial_state):
-                for node_name, state in output.items():
-                    interactive_results = state.get("dynamic_results", {}).get("interactive_results", []) if state.get("dynamic_results") else []
-                    new_interactive = interactive_results[sent_interactive_count:]
-                    sent_interactive_count = len(interactive_results)
+            async with asyncio.timeout(triage_timeout):
+                async for output in graph.astream(initial_state):
+                    for node_name, state in output.items():
+                        interactive_results = state.get("dynamic_results", {}).get("interactive_results", []) if state.get("dynamic_results") else []
+                        new_interactive = interactive_results[sent_interactive_count:]
+                        sent_interactive_count = len(interactive_results)
 
-                    await websocket.send_text(json.dumps({
-                        "node": node_name,
-                        "confidence": state.get("confidence_score", 0.0),
-                        "verdict": state.get("verdict", "PENDING"),
-                        "findings_count": len(state.get("findings", [])),
-                        "iteration": state.get("iteration", 0),
-                        "sandbox_actions": state.get("sandbox_actions_requested", []),
-                        "new_interactive_results": new_interactive,
-                        "llm_analysis": state.get("llm_analysis") if node_name == "llm_analysis" else None,
-                        "attack_techniques": state.get("attack_techniques", []) if node_name == "enrich_intelligence" else None
-                    }))
+                        await websocket.send_text(json.dumps({
+                            "node": node_name,
+                            "confidence": state.get("confidence_score", 0.0),
+                            "verdict": state.get("verdict", "PENDING"),
+                            "findings_count": len(state.get("findings", [])),
+                            "iteration": state.get("iteration", 0),
+                            "sandbox_actions": state.get("sandbox_actions_requested", []),
+                            "new_interactive_results": new_interactive,
+                            "llm_analysis": state.get("llm_analysis") if node_name == "llm_analysis" else None,
+                            "attack_techniques": state.get("attack_techniques", []) if node_name == "enrich_intelligence" else None
+                        }))
             await websocket.send_text(json.dumps({"status": "completed", "incident_id": incident_id}))
+        except TimeoutError:
+            try:
+                await websocket.send_text(json.dumps({
+                    "error": f"Triage timed out after {triage_timeout}s",
+                    "status": "timeout",
+                }))
+            except RuntimeError:
+                pass
         except WebSocketDisconnect:
             raise
         except Exception as graph_err:
