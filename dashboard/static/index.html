@@ -264,6 +264,67 @@
             border-bottom: 1px solid #1e293b;
             margin-bottom: 4px;
         }
+
+        /* ── Past Analyses Panel ──────────────────────────────────── */
+        #past-analyses-panel.open {
+            display: flex;
+            animation: dropdownFadeIn 0.15s ease;
+        }
+        .past-case-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .past-case-item:hover {
+            background: rgba(6, 182, 212, 0.08);
+        }
+        .past-case-item .case-id {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: #e2e8f0;
+            white-space: nowrap;
+        }
+        .past-case-item .case-sample {
+            font-size: 11px;
+            color: #64748b;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+        }
+        .past-case-item .case-confidence {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .past-case-item .case-date {
+            font-size: 10px;
+            color: #475569;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+        }
+        .verdict-badge {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 2px 6px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+        .verdict-malicious { background: rgba(239,68,68,0.15); color: #f87171; }
+        .verdict-suspicious { background: rgba(251,191,36,0.15); color: #fbbf24; }
+        .verdict-benign { background: rgba(52,211,153,0.15); color: #34d399; }
+        .verdict-review { background: rgba(6,182,212,0.15); color: #22d3ee; }
+        .verdict-unknown { background: rgba(100,116,139,0.15); color: #94a3b8; }
+
+        #btn-past-analyses.open .chevron {
+            transform: rotate(180deg);
+        }
     </style>
 </head>
 
@@ -294,19 +355,47 @@
         </div>
 
         <div class="flex items-center space-x-4 text-sm">
+            <a href="/malware-pipeline" target="_blank"
+                class="flex items-center space-x-1.5 px-2 py-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800/60 transition-all text-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span>Docs</span>
+            </a>
+            <div class="h-3 w-px bg-slate-800"></div>
             <div class="flex items-center space-x-1.5" id="status-ollama">
-                <span id="dot-ollama" class="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></span>
                 <span id="label-ollama" class="text-slate-500">Ollama&hellip;</span>
             </div>
             <div class="h-3 w-px bg-slate-800"></div>
             <div class="flex items-center space-x-1.5" id="status-lancedb">
-                <span id="dot-lancedb" class="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></span>
                 <span id="label-lancedb" class="text-slate-500">LanceDB</span>
             </div>
             <div class="h-3 w-px bg-slate-800"></div>
             <div class="flex items-center space-x-1.5" id="status-mcp">
-                <span id="dot-mcp" class="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></span>
                 <span id="label-mcp" class="text-slate-500">MCP Server</span>
+            </div>
+            <div class="h-3 w-px bg-slate-800"></div>
+            <div class="relative" id="past-analyses-wrap">
+                <button id="btn-past-analyses"
+                    class="flex items-center space-x-1.5 px-2 py-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800/60 transition-all text-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                    <span>Past Analyses</span>
+                    <svg class="chevron w-3 h-3 text-slate-600 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div id="past-analyses-panel"
+                    class="hidden absolute top-full right-0 mt-2 w-96 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl shadow-black/60 z-50 max-h-[70vh] flex flex-col overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0">
+                        <h3 class="text-sm font-semibold text-white">Past Analyses</h3>
+                        <span id="past-cases-count" class="text-xs text-slate-500 font-mono">0 cases</span>
+                    </div>
+                    <div id="past-cases-list" class="overflow-y-auto flex-1 p-1 space-y-0.5">
+                        <div class="text-center text-slate-500 text-sm py-8">Loading...</div>
+                    </div>
+                </div>
             </div>
         </div>
     </header>
@@ -387,64 +476,42 @@
                 <!-- Action bar -->
                 <div
                     class="w-full mt-6 flex items-center justify-between bg-slate-900 rounded-xl p-5 border border-slate-800">
-                    <div class="flex space-x-8 items-center">
-                        <label class="flex items-center space-x-3 cursor-pointer">
-                            <div class="relative">
-                                <input type="checkbox" class="sr-only" checked>
-                                <div class="block bg-cyan-600 w-10 h-6 rounded-full"></div>
-                                <div
-                                    class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform translate-x-4">
-                                </div>
-                            </div>
-                            <span class="text-slate-300 font-medium">Enable Sandbox (CAPE)</span>
-                        </label>
-                        <label class="flex items-center space-x-3 cursor-pointer">
-                            <div class="relative">
-                                <input type="checkbox" class="sr-only" checked>
-                                <div class="block bg-cyan-600 w-10 h-6 rounded-full"></div>
-                                <div
-                                    class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform translate-x-4">
-                                </div>
-                            </div>
-                            <span class="text-slate-300 font-medium">Use LanceDB IOC Memory</span>
-                        </label>
-                        <div class="flex flex-col space-y-2">
-                            <div class="flex items-center space-x-2">
-                                <label class="text-slate-400 text-sm font-medium whitespace-nowrap">Model:</label>
-                                <div style="position:relative;">
-                                    <div id="model-dropdown-btn" role="combobox" aria-haspopup="listbox"
-                                        aria-expanded="false">
-                                        <span class="model-icon">
-                                            <svg width="12" height="12" fill="none" stroke="#67e8f9" stroke-width="2"
-                                                viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round"
-                                                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                            </svg>
-                                        </span>
-                                        <span id="model-selected-label">Loading…</span>
-                                        <svg class="chevron" width="14" height="14" fill="none" stroke="currentColor"
-                                            stroke-width="2" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center space-x-2">
+                            <label class="text-slate-400 text-sm font-medium whitespace-nowrap">Model:</label>
+                            <div style="position:relative;">
+                                <div id="model-dropdown-btn" role="combobox" aria-haspopup="listbox"
+                                    aria-expanded="false">
+                                    <span class="model-icon">
+                                        <svg width="12" height="12" fill="none" stroke="#67e8f9" stroke-width="2"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                         </svg>
-                                    </div>
-                                    <div id="model-dropdown-panel" role="listbox">
-                                        <div class="dropdown-header">Available models</div>
-                                        <div id="model-options-list">
-                                            <div class="model-option"><span class="model-name"
-                                                    style="color:#475569">Loading…</span></div>
-                                        </div>
-                                    </div>
-                                    <!-- Hidden real select for form value -->
-                                    <select id="model-selector" style="display:none;">
-                                        <option value="">Loading...</option>
-                                    </select>
+                                    </span>
+                                    <span id="model-selected-label">Loading…</span>
+                                    <svg class="chevron" width="14" height="14" fill="none" stroke="currentColor"
+                                        stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                    </svg>
                                 </div>
+                                <div id="model-dropdown-panel" role="listbox">
+                                    <div class="dropdown-header">Available models</div>
+                                    <div id="model-options-list">
+                                        <div class="model-option"><span class="model-name"
+                                                style="color:#475569">Loading…</span></div>
+                                    </div>
+                                </div>
+                                <!-- Hidden real select for form value -->
+                                <select id="model-selector" style="display:none;">
+                                    <option value="">Loading...</option>
+                                </select>
                             </div>
-                            <div class="flex items-center space-x-2">
-                                <label class="text-slate-400 text-sm font-medium whitespace-nowrap">Timeout (s):</label>
-                                <input id="timeout-input" type="number" min="30" max="3600" value="300"
-                                    class="w-20 bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-cyan-500">
-                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label class="text-slate-400 text-sm font-medium whitespace-nowrap">Timeout (s):</label>
+                            <input id="timeout-input" type="number" min="30" max="3600" value="300"
+                                class="w-22 bg-slate-800 border border-slate-700 rounded-lg px-3 py-[7px] text-white text-sm font-mono focus:outline-none focus:border-cyan-500 focus:shadow-[0_0_0_2px_rgba(6,182,212,0.15)] transition-all hover:border-cyan-500">
                         </div>
                     </div>
                     <button id="btn-initiate"
@@ -592,8 +659,17 @@
             <div id="state-complete" class="w-full hidden flex-col" style="min-height:100%">
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-5 shrink-0">
-                    <h2 class="text-2xl font-bold text-white">Triage Report: <span id="rpt-incident-id"
-                            class="text-slate-400 font-mono">—</span></h2>
+                    <div class="flex items-center space-x-3">
+                        <button id="btn-new-triage"
+                            class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm text-slate-400 hover:text-white transition-colors flex items-center border border-slate-700">
+                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            New Triage
+                        </button>
+                        <h2 class="text-2xl font-bold text-white">Triage Report: <span id="rpt-incident-id"
+                                class="text-slate-400 font-mono">—</span></h2>
+                    </div>
                     <div class="flex space-x-2">
                         <button id="btn-dl-md"
                             class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-300 transition-colors flex items-center border border-slate-700">
@@ -807,8 +883,14 @@
                 </div>
             </div>
         </aside>
-
     </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-900 py-2 px-6 flex items-center justify-center shrink-0 w-full z-10">
+        <p class="text-xs text-slate-500">
+            Created by <a href="https://jboussouf.com" target="_blank" class="text-cyan-400 hover:text-cyan-300 transition-colors">Jamal Boussouf</a>
+        </p>
+    </footer>
 
     <!-- Application Logic -->
     <script>
@@ -973,6 +1055,85 @@
                     modelList.innerHTML = '<div class="model-option"><span class="model-name" style="color:#f87171">Ollama not reachable</span></div>';
                     setOllamaStatus(false, null);
                 });
+
+            // ── Past Analyses ───────────────────────────────────────────────
+            const pastBtn = document.getElementById('btn-past-analyses');
+            const pastPanel = document.getElementById('past-analyses-panel');
+            const pastList = document.getElementById('past-cases-list');
+            const pastCount = document.getElementById('past-cases-count');
+
+            function closePastPanel() {
+                pastPanel.classList.remove('open');
+                pastPanel.classList.add('hidden');
+                pastBtn.classList.remove('open');
+            }
+
+            pastBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isOpen = pastPanel.classList.contains('open');
+                if (isOpen) { closePastPanel(); return; }
+                pastPanel.classList.remove('hidden');
+                pastPanel.classList.add('open');
+                pastBtn.classList.add('open');
+                if (pastList.querySelector('.past-case-item') === null) {
+                    fetchPastCases();
+                }
+            });
+            document.addEventListener('click', () => closePastPanel());
+            pastPanel.addEventListener('click', (e) => e.stopPropagation());
+
+            function fetchPastCases() {
+                pastList.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">Loading...</div>';
+                fetch('/api/cases')
+                    .then(r => r.json())
+                    .then(data => {
+                        const cases = data.cases || [];
+                        pastCount.textContent = `${cases.length} case${cases.length !== 1 ? 's' : ''}`;
+                        if (cases.length === 0) {
+                            pastList.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">No past analyses found.</div>';
+                            return;
+                        }
+                        pastList.innerHTML = cases.map(c => {
+                            const v = (c.verdict || 'UNKNOWN').toUpperCase();
+                            const vClass = v === 'MALICIOUS' ? 'verdict-malicious'
+                                : v === 'SUSPICIOUS' ? 'verdict-suspicious'
+                                : v === 'BENIGN' ? 'verdict-benign'
+                                : v === 'ANALYST REVIEW' ? 'verdict-review'
+                                : 'verdict-unknown';
+                            const confPct = (c.confidence * 100).toFixed(0);
+                            const confColor = c.confidence >= 0.7 ? 'text-emerald-400'
+                                : c.confidence >= 0.4 ? 'text-amber-400'
+                                : 'text-slate-500';
+                            const dateStr = c.timestamp ? new Date(c.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+                            return `<div class="past-case-item" data-incident="${c.incident_id}">
+                                <span class="case-id">${c.incident_id}</span>
+                                <span class="verdict-badge ${vClass}">${v}</span>
+                                <span class="case-sample" title="${c.sample || ''}">${c.sample || '—'}</span>
+                                <span class="case-confidence ${confColor}">${confPct}%</span>
+                                <span class="case-date">${dateStr}</span>
+                            </div>`;
+                        }).join('');
+
+                        pastList.querySelectorAll('.past-case-item').forEach(el => {
+                            el.addEventListener('click', () => {
+                                loadPastCase(el.dataset.incident);
+                            });
+                        });
+                    })
+                    .catch(() => {
+                        pastList.innerHTML = '<div class="text-center text-red-400 text-sm py-8">Failed to load cases.</div>';
+                    });
+            }
+
+            function loadPastCase(incidentId) {
+                closePastPanel();
+                // If currently in initial state, jump directly to complete state
+                stateInitial.classList.add('hidden');
+                stateProcessing.classList.add('hidden');
+                stateComplete.classList.remove('hidden');
+                stateComplete.classList.add('flex');
+                loadReport(incidentId);
+            }
 
             // Triage Workflow
             const btnInitiate = document.getElementById('btn-initiate');
@@ -1474,6 +1635,15 @@
             closeDrawer.addEventListener('click', () => {
                 drawer.classList.add('translate-x-full');
                 setTimeout(() => drawer.classList.add('hidden'), 300);
+            });
+
+            // ── New Triage button ────────────────────────────────────
+            document.getElementById('btn-new-triage').addEventListener('click', () => {
+                stateComplete.classList.add('hidden');
+                stateComplete.classList.remove('flex');
+                stateInitial.classList.remove('hidden');
+                // Reset incident ID display
+                document.getElementById('rpt-incident-id').textContent = '—';
             });
         });
 

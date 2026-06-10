@@ -42,6 +42,11 @@ async def root():
     """Serve the main dashboard HTML."""
     return FileResponse(os.path.join(static_dir, "index.html"))
 
+@app.get("/malware-pipeline")
+async def malware_pipeline():
+    """Serve the malware pipeline HTML."""
+    return FileResponse(os.path.join(static_dir, "malware_pipeline.html"))
+
 @app.get("/api/llm")
 async def llm_list():
     """Return list of available Ollama models."""
@@ -131,6 +136,33 @@ async def delete_upload(file_name: str):
         raise HTTPException(status_code=404, detail="File not found")
     return {"file_name": file_name, "size_mb": round(path.stat().st_size / (1024 * 1024), 2)}
 
+
+@app.get("/api/cases")
+async def list_cases():
+    """List all past triage cases with summary metadata."""
+    cases_dir = Path(os.environ["CASES_DIR"])
+    if not cases_dir.exists():
+        return {"cases": []}
+    case_list = []
+    for case_path in sorted(cases_dir.iterdir(), reverse=True):
+        if not case_path.is_dir():
+            continue
+        report_path = case_path / "report" / "report.json"
+        if not report_path.exists():
+            continue
+        try:
+            rpt = json.loads(report_path.read_text())
+            case_list.append({
+                "incident_id": case_path.name,
+                "sample": rpt.get("incident", {}).get("sample_path", "").split("/")[-1] or case_path.name,
+                "verdict": rpt.get("incident", {}).get("verdict", "UNKNOWN"),
+                "confidence": rpt.get("confidence", {}).get("overall", 0),
+                "timestamp": rpt.get("generated_at", ""),
+                "wall_time": rpt.get("performance", {}).get("total_wall_seconds", 0),
+            })
+        except Exception:
+            continue
+    return {"cases": case_list}
 
 @app.get("/api/download/{incident_id}/{file_type}")
 async def download_report(incident_id: str, file_type: str):
